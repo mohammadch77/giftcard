@@ -159,7 +159,7 @@ order_items(id, order_id, variant_id, qty, unit_price, discount, line_total,
 - `order_holds(id, order_id, reason ∈ LATE_PAYMENT_NO_RESERVATION|PAYMENT_NEEDS_REVIEW|FRAUD_REVIEW|FULFILLMENT_FAILED|SUPPLIER_UNKNOWN, opened_at, opened_by, resolved_at, resolution ∈ RESUMED|REFUND_WALLET|REFUND_GATEWAY|SUBSTITUTED|CANCELLED, resolved_by, note)`; partial unique index → at most one *open* hold per `(order_id, reason)`. An order is `ON_HOLD` iff it has an open hold (kept consistent by trigger).
 - **Cancellation rules:** `PENDING_PAYMENT` → customer/system may cancel (reservation released). After `PAID`, cancellation = refund workflow (§10.2); delivered/revealed codes are not cancellable by the customer.
 
-## 8. State machine enforcement
+## 8. State machine enforcement  *(implemented as platform primitive in 2b-1a — see PHASE_2B_1A_NOTES.md; business machines are seeded by their owner modules)*
 
 Pattern applied to orders, payments, fulfillment tasks, reservations, supplier orders, refunds, tickets:
 

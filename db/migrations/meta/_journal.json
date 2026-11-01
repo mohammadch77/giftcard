@@ -15,6 +15,41 @@
       "when": 1793540174803,
       "tag": "0001_platform_primitives",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793542374913,
+      "tag": "0002_platform_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793542382222,
+      "tag": "0003_money_domains",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793542383225,
+      "tag": "0004_transition_engine",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793542384168,
+      "tag": "0005_idempotency_outbox_logic",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793542385250,
+      "tag": "0006_grants_registry",
+      "breakpoints": true
     }
   ]
 }

@@ -15,6 +15,11 @@ export interface DatabaseHandle {
 
 export function createDatabase(connectionString: string, poolMax = 10): DatabaseHandle {
   const pool = new Pool({ connectionString, max: poolMax });
+  // An error on an IDLE pooled client (e.g. server restart, admin termination) is emitted on the
+  // pool; without a listener Node would crash the process. Log a non-sensitive classification only.
+  pool.on("error", (error: Error & { code?: string }) => {
+    console.error(`[db] idle client error: ${error.code ?? error.name}`);
+  });
   const db = drizzle(pool, { schema });
   return { db, pool, close: () => pool.end() };
 }

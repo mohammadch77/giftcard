@@ -78,7 +78,7 @@ Each step: (1) you approve the step plan, (2) I implement only that step, (3) fu
 ## 5. Step details
 Notation — **Contract** = what other modules may import from `index.ts` (proposed names, not final). Migration numbers continue after `0001_platform_primitives`.
 
-### 2b-1a Platform primitives
+### 2b-1a Platform primitives  *(IMPLEMENTED — as-built details, deviations and test results: `PHASE_2B_1A_NOTES.md`)*
 - **Build:**
   - `platform/money` (Rial type, checked arithmetic, `rialToToman`, `tomanToRial`, `formatToman`; multiples-of-10 validator), `platform/ids` (UUIDv7 generator; non-guessable order-number generator), `platform/clock` (`Clock` port + `SystemClock`, `FixedClock` for tests), `platform/errors` (typed `DomainError` with stable codes, no secret interpolation).
   - **Transition engine:** table `state_transition_rules(machine, from_status, to_status)` (unique); generic trigger function `platform_enforce_transition()` (validity) and `platform_record_transition()` (writes a row into the entity's history table; actor/reason read from transaction-local `set_config('app.actor_id'/'app.reason')`). Owner modules create their own history tables and attach the triggers. **(P-3)**

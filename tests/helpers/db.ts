@@ -1,12 +1,32 @@
 import { randomBytes } from "node:crypto";
 import { Client } from "pg";
+import type { PoolClient } from "pg";
 import { createDatabase } from "../../src/platform/db/client";
 import type { DatabaseHandle } from "../../src/platform/db/client";
 import { runMigrations } from "../../src/platform/db/migrate";
 
 export interface TestDatabase extends DatabaseHandle {
   readonly url: string;
+  /** Cluster-global roles created for this database; dropped after the database. */
+  readonly roles: string[];
   drop(): Promise<void>;
+}
+
+export interface TestRoles {
+  appRole: string;
+  readonlyRole: string;
+}
+
+/** Postgres error code from a node-postgres or Drizzle-wrapped error. */
+export function pgCode(error: unknown): string | undefined {
+  const e = error as { code?: string; cause?: { code?: string } };
+  return e?.code ?? e?.cause?.code;
+}
+
+/** Message of the underlying PostgreSQL error (Drizzle wraps it in a "Failed query" error). */
+export function pgMessage(error: unknown): string {
+  const e = error as { message?: string; cause?: { message?: string } };
+  return `${e?.cause?.message ?? ""} ${e?.message ?? ""}`;
 }
 
 function adminUrl(): string {
@@ -43,18 +63,49 @@ export async function createTestDatabase(options: { migrate?: boolean } = {}): P
   if (options.migrate !== false) await runMigrations(url);
   const handle = createDatabase(url, 10);
 
+  const roles: string[] = [];
   return {
     ...handle,
     url,
+    roles,
     async drop() {
       await handle.close();
       const c = new Client({ connectionString: admin });
       await c.connect();
       try {
         await c.query(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
+        for (const r of roles) await c.query(`DROP ROLE IF EXISTS "${r}"`);
       } finally {
         await c.end();
       }
     },
   };
+}
+
+/**
+ * Creates unique NOLOGIN roles (roles are cluster-global), points platform_roles at them and
+ * applies grants — the same steps db/ops/roles.sql performs in production.
+ */
+export async function createTestRoles(t: TestDatabase): Promise<TestRoles> {
+  const suffix = randomBytes(5).toString("hex");
+  const appRole = `gc_app_${suffix}`;
+  const readonlyRole = `gc_ro_${suffix}`;
+  t.roles.push(appRole, readonlyRole);
+  await t.pool.query(`CREATE ROLE "${appRole}" NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE`);
+  await t.pool.query(`CREATE ROLE "${readonlyRole}" NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE`);
+  await t.pool.query("UPDATE platform_roles SET app_role = $1, readonly_role = $2", [appRole, readonlyRole]);
+  await t.pool.query("SELECT platform_apply_grants()");
+  return { appRole, readonlyRole };
+}
+
+/** Run `fn` on a connection that has switched to `role` (RESET afterwards). */
+export async function asRole<T>(t: TestDatabase, role: string, fn: (client: PoolClient) => Promise<T>): Promise<T> {
+  const client = await t.pool.connect();
+  try {
+    await client.query(`SET ROLE "${role}"`);
+    return await fn(client);
+  } finally {
+    await client.query("RESET ROLE").catch(() => undefined);
+    client.release();
+  }
 }

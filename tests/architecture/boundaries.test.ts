@@ -122,6 +122,17 @@ describe("dependency-cruiser rules actually reject violations", () => {
     expect(v).toContain("ui-is-presentational");
   });
 
+  it("rejects production code importing a test double from a testing/ folder (P-5)", () => {
+    const v = cruise({
+      "src/platform/clock/testing.ts": "export class ManualClock {}",
+      "src/platform/clock/index.ts": "export const x = 1;",
+      "src/platform/ids/index.ts": "import { ManualClock } from '../clock/testing';\nexport const y = ManualClock;",
+    });
+    expect(v).toContain("no-testing-doubles-in-production");
+    // a test double may import its siblings
+    expect(cruise({ "src/platform/clock/index.ts": "export const x = 1;", "src/platform/clock/testing.ts": "import { x } from './index';\nexport const y = x;" })).toEqual([]);
+  });
+
   it("the real source tree is clean", () => {
     expect(violationsOf(repo)).toEqual([]);
   });

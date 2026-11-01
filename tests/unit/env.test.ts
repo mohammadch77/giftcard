@@ -51,6 +51,20 @@ describe("env validation", () => {
     expect(() => parseEnv({ ...base, PAYMENT_GATEWAY: "zarinpal" })).toThrow(/PAYMENT_GATEWAY/);
   });
 
+  it("outbox worker settings have safe defaults and bounds", () => {
+    const env = parseEnv(base);
+    expect(env.OUTBOX_POLL_INTERVAL_MS).toBe(1000);
+    expect(env.OUTBOX_BATCH_SIZE).toBe(20);
+    expect(() => parseEnv({ ...base, OUTBOX_POLL_INTERVAL_MS: "10" })).toThrow();
+    expect(() => parseEnv({ ...base, OUTBOX_BATCH_SIZE: "100000" })).toThrow();
+  });
+
+  it("the old PAYMENT_VERIFY_GRACE_SECONDS name no longer configures anything (it implied a TTL extension)", () => {
+    const env = parseEnv({ ...base, PAYMENT_VERIFY_GRACE_SECONDS: "9" });
+    expect(env.LATE_PAYMENT_HANDLING_WINDOW_SECONDS).toBe(300);
+    expect("PAYMENT_VERIFY_GRACE_SECONDS" in env).toBe(false);
+  });
+
   it("bounds the late-payment handling window (default 300 s, configurable; never a TTL extension)", () => {
     expect(parseEnv({ ...base, LATE_PAYMENT_HANDLING_WINDOW_SECONDS: "120" }).LATE_PAYMENT_HANDLING_WINDOW_SECONDS).toBe(120);
     expect(() => parseEnv({ ...base, LATE_PAYMENT_HANDLING_WINDOW_SECONDS: "-1" })).toThrow();

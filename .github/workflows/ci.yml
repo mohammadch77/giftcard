@@ -2,6 +2,8 @@ name: ci
 on:
   push:
   pull_request:
+permissions:
+  contents: read
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -24,10 +26,15 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version-file: .nvmrc, cache: npm }
       - run: npm ci
+      - name: audit (production dependencies must be clean)
+        run: npm audit --omit=dev
+      - name: audit (all dependencies, must be clean while overrides are in place)
+        run: npm audit
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run arch
       - run: npm run test:unit
       - run: npm run test:db
+      - run: npm run test:concurrency
       - run: npm run db:drift
       - run: npm run test:sql-prototypes

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { sql } from "drizzle-orm";
 import { pgTable, integer, text } from "drizzle-orm/pg-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -30,7 +31,8 @@ describe("migrations", () => {
     await runMigrations(t.url);
     const after = await t.pool.query("select count(*)::int as n from drizzle.__drizzle_migrations");
     expect(after.rows[0].n).toBe(before.rows[0].n);
-    expect(after.rows[0].n).toBe(2);
+    const journal = JSON.parse(readFileSync("db/migrations/meta/_journal.json", "utf8")) as { entries: unknown[] };
+    expect(after.rows[0].n).toBe(journal.entries.length);
   });
 
   it("CHECK constraint from the Drizzle schema is enforced by PostgreSQL", async () => {

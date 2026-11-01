@@ -28,6 +28,17 @@ export default defineConfig({
           hookTimeout: 60_000,
         },
       },
+      {
+        resolve: { alias },
+        test: {
+          name: "concurrency",
+          include: ["tests/concurrency/**/*.test.ts"],
+          environment: "node",
+          fileParallelism: false,
+          testTimeout: 120_000,
+          hookTimeout: 60_000,
+        },
+      },
     ],
   },
 });

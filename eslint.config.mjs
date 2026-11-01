@@ -25,8 +25,25 @@ export default defineConfig([
     },
   },
   {
-    // Raw SQL must be parameterised: forbid string-built SQL through pg's query on a template literal with ${}.
-    files: ["src/**/*.ts"],
+    // Rial <-> Toman is converted ONLY in src/platform/money (D1). Block `/ 10` and `* 10` elsewhere.
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: ["src/platform/money/**"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        { selector: "BinaryExpression[operator='/'][right.value=10]", message: "Unit conversion belongs in src/platform/money (Rial<->Toman)." },
+        { selector: "BinaryExpression[operator='*'][right.value=10]", message: "Unit conversion belongs in src/platform/money (Rial<->Toman)." },
+        { selector: "BinaryExpression[operator='*'][left.value=10]", message: "Unit conversion belongs in src/platform/money (Rial<->Toman)." },
+        {
+          selector: "CallExpression[callee.property.name='query'] > TemplateLiteral[expressions.length>0]",
+          message: "Do not interpolate values into SQL strings. Use parameters ($1) or Drizzle sql`` templates.",
+        },
+      ],
+    },
+  },
+  {
+    // Inside src/platform/money only the SQL-interpolation rule applies (unit conversion lives there).
+    files: ["src/platform/money/**/*.ts"],
     rules: {
       "no-restricted-syntax": [
         "error",

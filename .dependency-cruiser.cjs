@@ -67,6 +67,13 @@ module.exports = {
       to: { dependencyTypes: ["npm-dev"] },
     },
     {
+      name: "no-testing-doubles-in-production",
+      comment: "Test doubles live in a testing/ folder or a testing.ts file and may only be used by tests (P-5).",
+      severity: "error",
+      from: { path: "^src/", pathNot: "(^|/)testing(/|\\.[cm]?tsx?$)" },
+      to: { path: "(^|/)testing(/|\\.[cm]?tsx?$)" },
+    },
+    {
       name: "not-to-unresolvable",
       severity: "error",
       from: {},

@@ -27,6 +27,10 @@ const baseSchema = z.object({
   SMS_PROVIDER: providerSetting,
   SUPPLIER_ADAPTERS: providerSetting,
 
+  // Worker / outbox tuning (platform, no business meaning).
+  OUTBOX_POLL_INTERVAL_MS: z.coerce.number().int().min(100).max(60_000).default(1000),
+  OUTBOX_BATCH_SIZE: z.coerce.number().int().min(1).max(1000).default(20),
+
   // Late-payment HANDLING policy window (D9, APPROVED): initial 300 s, configurable.
   // It does NOT extend any reservation TTL and never allows using an expired reservation
   // or delivering without a (new) reservation. See DATABASE_DESIGN §5.5.

@@ -18,9 +18,10 @@
     "db:generate:custom": "drizzle-kit generate --custom",
     "db:migrate": "tsx --env-file-if-exists=.env scripts/migrate.ts",
     "db:drift": "tsx scripts/check-drift.ts",
-    "test": "npm run test:unit && npm run test:db",
+    "test": "npm run test:unit && npm run test:db && npm run test:concurrency",
     "test:unit": "vitest run --project unit",
     "test:db": "vitest run --project db",
+    "test:concurrency": "vitest run --project concurrency",
     "test:sql-prototypes": "bash docs/db-prototypes/test_prototypes.sh",
     "check": "npm run lint && npm run typecheck && npm run arch && npm run test"
   },
