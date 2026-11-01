@@ -69,7 +69,7 @@ Customer-visible labels: PENDING→"در انتظار", PROCESSING→"در حا�
 | — | `ACTIVE` | created with order, has `expires_at` |
 | `ACTIVE` | `CONSUMED` ■ | payment verified **while ACTIVE and unexpired** (conditional update); only then may codes → SOLD |
 | `ACTIVE` | `RELEASED` ■ | order cancelled |
-| `ACTIVE` | `EXPIRED` ■ | TTL sweep (skipped while a payment for the order is `VERIFYING`; one-time grace extension) |
+| `ACTIVE` | `EXPIRED` ■ | TTL sweep. **No extension of any kind exists** (D9): a payment in `VERIFYING` does not delay expiry |
 
 A reservation in `EXPIRED`/`RELEASED` is never revived. Late-payment recovery creates a **new** reservation.
 

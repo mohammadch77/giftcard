@@ -27,9 +27,10 @@ const baseSchema = z.object({
   SMS_PROVIDER: providerSetting,
   SUPPLIER_ADAPTERS: providerSetting,
 
-  // Initial value 5 minutes, configurable. Only extends a reservation while a payment is
-  // VERIFYING; it never allows using an expired reservation (see DATABASE_DESIGN §5.5).
-  PAYMENT_VERIFY_GRACE_SECONDS: z.coerce.number().int().min(0).max(1800).default(300),
+  // Late-payment HANDLING policy window (D9, APPROVED): initial 300 s, configurable.
+  // It does NOT extend any reservation TTL and never allows using an expired reservation
+  // or delivering without a (new) reservation. See DATABASE_DESIGN §5.5.
+  LATE_PAYMENT_HANDLING_WINDOW_SECONDS: z.coerce.number().int().min(0).max(1800).default(300),
 });
 
 export const envSchema = baseSchema.superRefine((env, ctx) => {

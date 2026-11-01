@@ -1,6 +1,6 @@
 # PHASE_2B_PLAN.md — Core backend execution plan
 
-Status: **PROPOSAL v1 for owner approval.** Nothing in this document has been implemented. **No code and no migration has been created for Phase 2b.** Where this plan and `DECISIONS.md` disagree, `DECISIONS.md` wins.
+Status: **v1.1 — P-1…P-9 APPROVED, D9 APPROVED, only step 2b-1a AUTHORISED (see DECISIONS.md).** Steps after 2b-1a are plans only. **No code and no migration has been created for Phase 2b.** Where this plan and `DECISIONS.md` disagree, `DECISIONS.md` wins.
 
 Terminology: "SQL prototypes" = `docs/db-prototypes/` (design-validation scripts, 40 checks). "Application tests" = `tests/**` run by Vitest against the real code. They are reported separately (§8). **Passing prototypes is never evidence that the commercial system is ready.**
 
@@ -17,7 +17,7 @@ I re-read `DECISIONS`, `IMPLEMENTATION_ROADMAP`, `ARCHITECTURE`, `DATABASE_DESIG
 | F1 | I had recorded **D9 as resolved** and written "5 minutes" as a decided policy. Your latest message says 300 s is only a **technical default** and the late-payment policy **still needs your approval**. | D9 re-opened in `OPEN_QUESTIONS`; `DECISIONS` E2 reworded; `DATABASE_DESIGN §5.5` reworded in this commit. "Manual review only" (E1) stays as the *current working rule*, not as final policy. |
 | F2 | `DECISIONS` directive #8 still listed "auto re-reserve flag (default off), grace window, hold SLA" as open — stale vs E1/E2. | Updated. |
 | F3 | `STATE_MACHINES`: late payment arriving for an `EXPIRED`/`CANCELLED` order (both terminal ■) moves it to `ON_HOLD` — contradicts "terminal". | Reworded: these two states are terminal *except* via a `LATE_PAYMENT_NO_RESERVATION` hold. Transition rule table must encode this explicitly. |
-| F4 | `DATABASE_DESIGN §5.5` said the sweeper "skips reservations with a payment in VERIFYING". Inventory cannot know payments (module matrix). | Simplified: orders calls `inventory.extendForVerification()` which moves `expires_at` once; the sweeper stays payment-agnostic. |
+| F4 | `DATABASE_DESIGN §5.5` said the sweeper "skips reservations with a payment in VERIFYING". Inventory cannot know payments (module matrix). | Simplified: orders calls `inventory.extendForVerification()` which moves `expires_at` once; the sweeper stays payment-agnostic. | *(Later withdrawn entirely by D9: no extension exists.)*
 | F5 | `DATABASE_DESIGN §17` proposes crypto-shredding of delivered secrets after 12 months. Your rule: **no financial/encrypted data is deleted without a defined policy.** | Retention stays a *proposal*. Phase 2b implements **no delete, purge or crypto-shred path** (P-7). |
 | F6 | `ARCHITECTURE §3` says the payment-success handler is "one transaction incl. reservation consume and order PAID", but `payments` may not import `orders`/`inventory`. | Resolved by orchestration in `orders` (§5, step 2b-8): orders calls `payments`, `inventory`, `ledger` in one transaction. Contract written below. |
 | F7 | Prototype `min_balance` is copied into `ledger_account_balances` at creation; later changes would not propagate. | `min_balance` is immutable after creation (trigger) — step 2b-2. |
@@ -68,7 +68,7 @@ Key consequences:
 | **2b-5** | Inventory | inventory | `0013_inventory_core`, `0014_inventory_guards` | B3 (TTL) ; **D8 before real codes** |
 | **2b-6** | Payments + Wallet | payments, wallet | `0015_payments_core`, `0016_wallet_topups` | none (X1 only for a real gateway) |
 | **2b-7** | Suppliers + Fulfillment | suppliers, fulfillment | `0017_suppliers_core`, `0018_fulfillment_core` | B2, B7; X3 only for a real supplier |
-| **2b-8** | Orders, checkout, late-payment path | orders | `0019_orders_core`, `0020_cross_module_guards` | **D9 final approval** for acceptance; B3 |
+| **2b-8** | Orders, checkout, late-payment path | orders | `0019_orders_core`, `0020_cross_module_guards` | B3; the operational use of the handling window (confirm in step plan) |
 | **2b-9** | Refunds + reconciliation + phase closure | orders/payments/wallet/fulfillment (refund use cases in `orders`), worker | `0021_refunds`, `0022_reconciliation_findings` | **B12 legal**, B13 |
 
 Each step: (1) you approve the step plan, (2) I implement only that step, (3) full report: application tests and SQL-prototype regression reported separately, plus "not tested" list, (4) you approve the next.
@@ -129,7 +129,7 @@ Notation — **Contract** = what other modules may import from `index.ts` (propo
 ### 2b-5 Inventory
 - **Tables:** `inventory_batches`, `digital_codes` (status_links CHECK, UNIQUE `code_hash`, UNIQUE `order_item_id`, `payload_kind`), `inventory_reservations` (+ lines for counted stock), `inventory_movements` (append-only), `stock_counters`. Triggers: SOLD requires CONSUMED reservation; SOLD immutable except →VOID; code & reservation transitions via the engine; floor CHECKs.
 - **Reviewed vs prototype:** time via `p_now`; reservation lines unified for itemised + counted stock; `order_ref` is an opaque id (FK added in 2b-8, P-1).
-- **Contracts:** `inventory.importCodes(tx, batch, codes[])` (returns counts/duplicates — **never echoes codes**), `reserve(tx, {orderRef, lines, ttl})`, `consume(tx, reservationId) → CONSUMED | LATE`, `release`, `extendForVerification(tx, reservationId, grace)` (ACTIVE & unexpired only, once), `sweepExpired(batchSize)`, `markSold(tx, reservationId, itemMap)`, `unsealForDelivery(tx, codeId, DeliveryCapability)` (capability object minted only by fulfillment), `availability(variantId)`.
+- **Contracts:** `inventory.importCodes(tx, batch, codes[])` (returns counts/duplicates — **never echoes codes**), `reserve(tx, {orderRef, lines, ttl})`, `consume(tx, reservationId) → CONSUMED | LATE`, `release`, `sweepExpired(batchSize)`, `markSold(tx, reservationId, itemMap)`, `unsealForDelivery(tx, codeId, DeliveryCapability)` (capability object minted only by fulfillment), `availability(variantId)`.
 - **Independent (private):** crypto fields, hashing, movement bookkeeping, SQL for `SKIP LOCKED`. **Public:** the contract above; ciphertext columns are unreachable to other modules (schema is private).
 - **Tests:** *Database* — status_links, dedupe, SOLD guard/immutability, negative stock, movement append-only. *Integration* — import dedupe (in-file, cross-batch, cross-variant), canary secret never in tables/logs/errors, `available+reserved+sold+void = total`, movements reconcile with state. *Concurrency* — **S1-core through the service: 1 000 attempts vs 10 codes** (≤10 reservations, 0 duplicates); chaos run of 5 000 random reserve/release/expire/consume ops with invariants checked at the end; **C6: consume vs sweeper racing at the expiry boundary 200× — never both, never SOLD from a lapsed reservation**; counted stock 1 000 vs 10.
 - **Acceptance:** guards hold even when the service layer is bypassed with raw SQL; sweeper metrics exposed (stuck-reserved count).
@@ -155,9 +155,9 @@ Notation — **Contract** = what other modules may import from `index.ts` (propo
 - **Tables:** `orders` (`payment_method ∈ WALLET|GATEWAY`, no split), `order_items` (snapshots), `order_status_history`, `order_holds`. **`0020_cross_module_guards`:** FKs from `digital_codes.order_item_id`, `inventory_reservations.order_ref`, `payments.order_id`, `fulfillment_tasks.order_item_id` to the orders tables; **delivery gate trigger** (a delivery can be inserted only if the order's payment is SUCCEEDED and its reservation CONSUMED); order transition rules incl. the F3 late-payment exception.
 - **Contracts:** `orders.checkout(actor, lines, paymentMethod, idempotencyKey)`, `orders.confirmGatewayPayment(paymentRef)` (3-phase), `orders.cancel`, `orders.expireStale()` (worker), `orders.resolveHold(actor, holdId, {RE_RESERVE | KEEP_ON_HOLD})` (refund-based resolutions arrive in 2b-9), `orders.get(actor, id)` (owner-checked).
 - **Orchestration contract (F6):** `orders` is the only caller that combines `payments`, `inventory`, `wallet/ledger`, `fulfillment` in one transaction; modules below it never import `orders` (they emit outbox events).
-- **Late payment (current working rule, pending your D9 approval):** consume returns `LATE` ⇒ payment recorded SUCCEEDED, ledger → `SUSPENSE_UNRESOLVED_RECEIPTS`, order `ON_HOLD` + `order_holds` row, **no task, nothing SOLD**; resolution only by a permissioned human; `RE_RESERVE` creates a *new* reservation. Grace extension default `PAYMENT_VERIFY_GRACE_SECONDS=300` is a **technical default**, not an approved business value.
+- **Late payment (D9, APPROVED):** consume returns `LATE` ⇒ payment recorded SUCCEEDED, ledger → `SUSPENSE_UNRESOLVED_RECEIPTS`, order `ON_HOLD` + `order_holds` row, **no task, nothing SOLD**; resolution only by a permissioned human; `RE_RESERVE` creates a *new* reservation. `LATE_PAYMENT_HANDLING_WINDOW_SECONDS=300` is a handling-policy parameter only; **no reservation TTL is ever extended**, and an expired reservation is never used for delivery.
 - **Tests:** *Integration* — client-supplied price ignored; insufficient stock leaves no order/reservation (rollback); same idempotency key → same order; **C2/C6/C10** end-to-end incl. late-payment → hold → re-reserve → delivery; failure injected after ledger posting rolls everything back; owner-only reads (IDOR). *Concurrency* — **S1 end-to-end: 1 000 concurrent checkout→pay→deliver attempts on 10 codes** (wallet-paid, then TestGateway-paid, then mixed): ≤10 deliveries, 0 duplicate codes, no negative stock, every order/payment/task in a consistent state, ledger balanced, `available+reserved+sold=total`; sweeper-vs-payment race. *Database* — gate trigger rejects delivery for unpaid order even via raw SQL.
-- **Acceptance:** S1 end-to-end green; invariants query-set returns zero violations; **your approval of the late-payment policy (D9)** recorded in `DECISIONS`.
+- **Acceptance:** S1 end-to-end green; invariants query-set returns zero violations; late-payment path behaves exactly as the approved D9 policy (tests assert: no TTL extension, no delivery from an expired reservation).
 - **Risks:** *financial* — money without delivery or delivery without money, orphan reservations, replay/double submit; *security* — IDOR, order enumeration (non-guessable numbers), privilege use in hold resolution.
 
 ### 2b-9 Refunds, reconciliation, closure
@@ -179,7 +179,7 @@ Rule for all: **tables, SQL, schema.ts, triggers' helper functions and crypto fi
 | identity | OTP/session/limiter internals, TOTP storage | `requestOtp`, `verifyOtp`, `getSession`, `authorize`, `Actor`, `Permission`, `SmsProvider` port | audit |
 | catalog | tree/attr-schema logic, price-history trigger | variant snapshot/lookup, published listing DTOs, admin use cases | audit |
 | pricing | — | `quote` | catalog, promotions (Phase 3) |
-| inventory | ciphertext, hashing, SKIP LOCKED SQL, movements | `importCodes`, `reserve`, `consume`, `release`, `extendForVerification`, `sweepExpired`, `markSold`, `unsealForDelivery`(capability), `availability` | catalog, audit |
+| inventory | ciphertext, hashing, SKIP LOCKED SQL, movements | `importCodes`, `reserve`, `consume`, `release`, `sweepExpired`, `markSold`, `unsealForDelivery`(capability), `availability` | catalog, audit |
 | suppliers | credentials, adapter registry, supplier SQL | `submit`, `reconcile`, `SupplierAdapter` port, admin use cases | catalog, audit |
 | payments | payment SQL, event log | `initiate`, `beginVerification`, `recordVerificationResult`, `PaymentGateway` port | ledger, audit |
 | wallet | topup table | `topUp.*`, `payFromWallet`, `balance`, `adjust` | ledger, payments, audit |
@@ -198,7 +198,7 @@ Rule for all: **tables, SQL, schema.ts, triggers' helper functions and crypto fi
 | P-6 | **Time:** `Clock` port; time-dependent SQL functions take `p_now`. |
 | P-7 | **No deletion:** no DELETE/TRUNCATE grants, no purge jobs, no crypto-shredding in 2b for financial, secret-bearing, audit, idempotency or outbox tables, until a retention policy is approved. |
 | P-8 | **No new runtime dependencies expected** (UUIDv7, TOTP, crypto in-house on Node built-ins). If one becomes necessary I will report before adding it. |
-| P-9 | **Rial in TypeScript:** branded `number` restricted to safe integers (`Number.isSafeInteger` guard, arithmetic only via `platform/money`), Drizzle `bigint` in `number` mode; JSON amounts named `amountRial`. (Alternative: JS `bigint` everywhere — safer range, clumsier APIs; maximum realistic value ≈ 10¹⁵ ≪ 2⁵³.) |
+| P-9 | **Rial in TypeScript (APPROVED):** branded `number` restricted to safe integers (`Number.isSafeInteger` guard, arithmetic only via `platform/money`); limits enforced in domain **and** PostgreSQL domains; JSON amounts named `amountRial`. |
 
 ## 8. Test taxonomy and honest reporting
 - **Unit** — pure logic, no DB. **Integration** — service + real PostgreSQL. **Database** — SQL-level guards exercised with raw SQL (bypassing services). **Concurrency/stress** — real parallel connections, invariants asserted afterwards. All run through Vitest projects (`unit`, `db`; a `stress` project is added in 2b-1a so slow tests are separable but still in CI).
@@ -209,8 +209,8 @@ Rule for all: **tables, SQL, schema.ts, triggers' helper functions and crypto fi
 ## 9. Open decisions and blockers
 | ID | Item | Needed by | Status |
 |---|---|---|---|
-| P-1…P-9 | Cross-cutting proposals above | before 2b-1a starts | **awaiting you** |
-| D9 | Final late-payment policy (manual-only is the *working* rule; 300 s is a technical default; hold SLA; settlement options) | acceptance of 2b-8 | **awaiting you** |
+| P-1…P-9 | Cross-cutting proposals above | — | **APPROVED** |
+| D9 | Final late-payment policy | — | **APPROVED** (see DECISIONS) |
 | D8 | VPS + KEK custody | before any real secret/inventory; not before code | open |
 | D10 | Accountant: chart, recognition, VAT, COGS | launch gate (not 2b) | open |
 | B12/B13 | Refund rules (legal) / gateway refund need | final of 2b-9 / launch | open — temporary rules in use |
@@ -221,7 +221,7 @@ Rule for all: **tables, SQL, schema.ts, triggers' helper functions and crypto fi
 | T2, T5, T6, T7 | PG version, monitoring, object storage, OTP library | as noted | low risk |
 | X1–X3 | Gateway, SMS, supplier documentation | only for *real* adapters — **not blockers for 2b** | open |
 | CI | GitHub Actions: first run **passed** on `a2719c7`; still open: confirm required-status/branch protection, rerun after dependency changes, add `npm audit` reporting step, pin action versions by SHA | 2b-1a | open (see `DEPENDENCY_AUDIT.md`) |
-| DEP | Apply (or reject) the audit-fix `overrides` candidate | before 2b-1a | **awaiting you** (`DEPENDENCY_AUDIT.md §3`) |
+| DEP | Apply (or reject) the audit-fix `overrides` candidate | before 2b-1a | **APPROVED conditional** — tested as an independent change |
 
 ## 10. Recommendation
-Approve P-1…P-9 and the dependency-override decision, then authorise **only 2b-1a**. 2b-1a touches no money and no secrets, produces the primitives every later step relies on, and is small enough to review in one sitting.
+P-1…P-9, D9 and the override decision are approved; **only 2b-1a** is authorised. 2b-1a touches no money and no secrets, produces the primitives every later step relies on, and is small enough to review in one sitting.

@@ -16,7 +16,7 @@ Authoritative log of decisions made by the project owner. Other docs must agree 
 ## Directives requiring careful design (policy principles fixed, details still open)
 | # | Directive | Where designed | Still open |
 |---|---|---|---|
-| 8 | Late payment / reservation expiry: never deliver without re-reservation; order enters review and settlement. | DATABASE_DESIGN §5.5, STATE_MACHINES | **final late-payment policy still needs owner approval (D9)**: grace value, hold SLA, settlement options |
+| 8 | Late payment / reservation expiry: never deliver without re-reservation; order enters review and settlement. | DATABASE_DESIGN §5.5, STATE_MACHINES | **resolved by D9 (APPROVED)** |
 | 9 | Refund policy records delivery and reveal of confidential data; final rules need business + legal decision. | DATABASE_DESIGN §10.1–10.2 | the actual refund rules |
 | 10 | Chart of Accounts proposed; revenue-recognition timing **not final** without an accountant. | DATABASE_DESIGN §9.2–9.3 | accountant sign-off (recognition mode, VAT, COGS) |
 
@@ -26,8 +26,8 @@ Authoritative log of decisions made by the project owner. Other docs must agree 
 ## Decisions of 2026-11-01 (second review) and Phase 2a authorisation
 | ID | Decision | Applied in |
 |---|---|---|
-| E1 | Working rule for v1: late payments are **manual review and settlement only** (no automatic re-reservation). The overall late-payment policy is **not final** and still requires owner approval (D9). | DATABASE_DESIGN §5.5 |
-| E2 | `PAYMENT_VERIFY_GRACE_SECONDS=300` is a **technical default only — not an approved business policy value**. Whatever its value, the grace window never allows using an expired reservation or delivering without a (new) reservation. | DATABASE_DESIGN §5.5; `src/platform/config/env.ts` |
+| E1 | *Superseded by D9 (APPROVED, see below).* | — |
+| E2 | *Superseded by D9 (APPROVED, see below):* the 300 s value is a late-payment **handling** window, not a reservation extension. | — |
 | E3 | VPS choice and final KEK custody method stay **open**; the architecture must still allow secure key management and recovery. | OPEN_QUESTIONS D8; SECURITY §2.1 |
 | E4 | Chart of Accounts and revenue-recognition timing stay **proposed** until an accountant approves before launch. Revenue-recognition mode must **not** become a freely editable admin-panel setting. | DATABASE_DESIGN §9.2 |
 | E5 | Current refund policy is **temporary**; final policy needs legal review. | DATABASE_DESIGN §10.2; OPEN_QUESTIONS B12 |
@@ -36,7 +36,17 @@ Authoritative log of decisions made by the project owner. Other docs must agree 
 ## Decisions of 2026-11-01 (third review) — Phase 2b preparation
 | ID | Decision | Applied in |
 |---|---|---|
-| F-1 | **D9 is OPEN again**: 300 s is a technical default; the late-payment policy needs owner approval. | OPEN_QUESTIONS D9; PHASE_2B_PLAN §9 |
+| F-1 | *Superseded:* D9 is APPROVED (fourth review). | — |
 | F-2 | Prototype SQL tests are kept **separate** from application tests and must never be reported as readiness of the commercial system. | PHASE_2B_PLAN §8 |
 | F-3 | No financial or encrypted data may be removed without an explicit approved policy (no delete/purge/crypto-shred paths in Phase 2b). | PHASE_2B_PLAN P-7 |
 | F-4 | Phase 2b is **planned only**; no code or migration until the plan is approved. | PHASE_2B_PLAN |
+
+## Decisions of 2026-11-01 (fourth review) — Phase 2b-1a authorisation
+| ID | Status | Decision | Applied in |
+|---|---|---|---|
+| **D9** | **APPROVED** | **Final late-payment policy.** (1) A payment verified after the reservation has expired is classified `LATE`. (2) The order becomes `ON_HOLD`. (3) The received amount is posted to `SUSPENSE_UNRESOLVED_RECEIPTS`. (4) Review and settlement are **manual** in v1. (5) The **300-second window is a handling-policy parameter only**; it **does not extend the reservation TTL**. (6) An expired reservation is **never** used for delivery under any circumstance; delivery after a late payment is possible only through a *new* reservation chosen by a human. Config key: `LATE_PAYMENT_HANDLING_WINDOW_SECONDS` (default 300; renamed from `PAYMENT_VERIFY_GRACE_SECONDS`, which wrongly suggested a TTL extension). The `inventory.extendForVerification` idea is **withdrawn**. | DATABASE_DESIGN §5.5; STATE_MACHINES; PHASE_2B_PLAN |
+| P-1 … P-8 | **APPROVED** | As proposed in PHASE_2B_PLAN §7: P-1 cross-module FK policy; P-2 merged Phase 2b with 10 steps; P-3 trigger-based transition validation + history; P-4 ops-script roles + migration grants; P-5 test doubles isolated under `**/testing/`; P-6 `Clock` port and `p_now` in time-dependent SQL; P-7 no delete/purge/crypto-shred; P-8 no new runtime dependencies. | PHASE_2B_PLAN §7 |
+| P-9 | **APPROVED (refined)** | `Rial` = **branded `number`**, guarded by `Number.isSafeInteger`; all financial arithmetic on integers only (no floats). Amount limits are enforced in **both** the domain layer (`platform/money`) and PostgreSQL (domains `rial_amount`, `rial_price`, `rial_balance` with CHECKs). Technical ceilings: single amount ≤ `MAX_RIAL_AMOUNT = 10^13` Rial; aggregates/balances ≤ `Number.MAX_SAFE_INTEGER`. Prices are multiples of 10 Rial. (The 10^13 ceiling is a technical default; changing it needs a migration.) | PHASE_2B_1A_NOTES |
+| G-1 | **APPROVED** | **Release scope vs implementation order.** Moving Cart, Promotions, Support, Fraud and Notifications to later *implementation* steps does **not** remove them from V1 *release scope*. V1 must still ship: shopping cart; discount codes and promotional campaigns; support-ticket system; baseline anti-fraud controls; essential order/payment/support notifications. | IMPLEMENTATION_ROADMAP |
+| DEP-1 | **APPROVED (conditional)** | Test and apply npm `overrides` as an **independent change**; if it causes any incompatibility, revert and report. `npm audit fix --force` is forbidden. | DEPENDENCY_AUDIT |
+| 2b-1a | **AUTHORISED** | Scope: money/Rial primitives, ids, Clock, state-transition engine + history/triggers, idempotency, outbox, database roles and grants. **Excluded:** any business module, real payment, wallet, ledger, identity, operational cryptography, provider connection. No further 2b step starts without separate approval. | PHASE_2B_PLAN §5 |

@@ -10,7 +10,7 @@ describe("env validation", () => {
     expect(env.PAYMENT_GATEWAY).toBe("none");
     expect(env.SMS_PROVIDER).toBe("none");
     expect(env.SUPPLIER_ADAPTERS).toBe("none");
-    expect(env.PAYMENT_VERIFY_GRACE_SECONDS).toBe(300);
+    expect(env.LATE_PAYMENT_HANDLING_WINDOW_SECONDS).toBe(300);
     expect(env.DATABASE_POOL_MAX).toBe(10);
   });
 
@@ -51,9 +51,9 @@ describe("env validation", () => {
     expect(() => parseEnv({ ...base, PAYMENT_GATEWAY: "zarinpal" })).toThrow(/PAYMENT_GATEWAY/);
   });
 
-  it("bounds the payment verification grace window (default 300 s, configurable)", () => {
-    expect(parseEnv({ ...base, PAYMENT_VERIFY_GRACE_SECONDS: "120" }).PAYMENT_VERIFY_GRACE_SECONDS).toBe(120);
-    expect(() => parseEnv({ ...base, PAYMENT_VERIFY_GRACE_SECONDS: "-1" })).toThrow();
-    expect(() => parseEnv({ ...base, PAYMENT_VERIFY_GRACE_SECONDS: "99999" })).toThrow();
+  it("bounds the late-payment handling window (default 300 s, configurable; never a TTL extension)", () => {
+    expect(parseEnv({ ...base, LATE_PAYMENT_HANDLING_WINDOW_SECONDS: "120" }).LATE_PAYMENT_HANDLING_WINDOW_SECONDS).toBe(120);
+    expect(() => parseEnv({ ...base, LATE_PAYMENT_HANDLING_WINDOW_SECONDS: "-1" })).toThrow();
+    expect(() => parseEnv({ ...base, LATE_PAYMENT_HANDLING_WINDOW_SECONDS: "99999" })).toThrow();
   });
 });

@@ -16,6 +16,9 @@ Catalog & variants · three fulfillment methods (auto code / manual / supplier A
 3. Maintainable modular architecture.
 4. Premium UX/visual design (deferred to Phase 5 pending six design references).
 
+## V1 release scope
+Cart, discount codes/campaigns, support tickets, baseline anti-fraud and essential notifications **remain in V1 release scope** even though they are implemented after the core backend (G-1, see IMPLEMENTATION_ROADMAP).
+
 ## Decisions
 See `DECISIONS.md` (Rial storage / Toman display, Drizzle, mobile OTP, adapters without a chosen gateway/SMS/supplier, no split payment, no Docker/Redis).
 
