@@ -48,7 +48,7 @@ Tailwind/shadcn/fonts/UI (Phase 4–5) · argon2, pino · any provider SDK · `K
 
 ## Decisions needing your input / risk notes
 1. **TypeScript 6.0.3 instead of npm-latest 7.0.2** — typescript-eslint doesn't support TS ≥6.1 yet. Low risk; revisit later.
-2. **`npm audit`: 2 moderate dev-tooling advisories** (drizzle-kit's bundled legacy `@esbuild-kit` esbuild dev-server; `minimatch` ReDoS in lint tooling). They affect developer machines/CI only, not the shipped app; npm's suggested "fix" would downgrade drizzle-kit/eslint to ancient majors, so it was not applied. Recommend re-checking when drizzle-kit drops `@esbuild-kit`.
+2. **`npm audit`: 2 advisories (20 packages flagged by propagation, all moderate, dev-tooling only — see DEPENDENCY_AUDIT.md)** (drizzle-kit's bundled legacy `@esbuild-kit` esbuild dev-server; `minimatch` ReDoS in lint tooling). They affect developer machines/CI only, not the shipped app; npm's suggested "fix" would downgrade drizzle-kit/eslint to ancient majors, so it was not applied. Recommend re-checking when drizzle-kit drops `@esbuild-kit`.
 3. Vitest 5 and Vite are pulled in transitively by vitest (no direct vite dependency declared).
-4. The CI workflow is written but has not run on GitHub (it needs the repo's Actions to be enabled); its steps mirror what was run locally.
+4. **Correction (verified 2026-11-01 via GitHub API):** the CI workflow *did* run — run #1 on `a2719c7` completed with `success` (all 12 steps). Open CI work is listed in DEPENDENCY_AUDIT §4.
 5. Local `.env` (gitignored, not committed) points at a local socket PostgreSQL; `.env.example` contains placeholders only.

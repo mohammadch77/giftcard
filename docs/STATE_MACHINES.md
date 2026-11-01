@@ -14,7 +14,7 @@ Order status, payment status and fulfillment status are **independent**; the ord
 | `PENDING_PAYMENT` | `EXPIRED` ■ | reservation TTL elapsed, no payment |
 | `PAID` | `FULFILLING` | fulfillment tasks created |
 | `PENDING_PAYMENT` | `ON_HOLD` | **late payment**: payment verified but reservation lapsed (hold reason `LATE_PAYMENT_NO_RESERVATION`); money in suspense; no fulfillment |
-| `EXPIRED` / `CANCELLED` | `ON_HOLD` | late payment arrives for an already expired/cancelled order (same hold reason) |
+| `EXPIRED` / `CANCELLED` | `ON_HOLD` | **only** for a late payment arriving after expiry/cancellation (hold reason `LATE_PAYMENT_NO_RESERVATION`). These two states are otherwise terminal; the transition-rule table must encode this exception explicitly |
 | `PAID` | `ON_HOLD` | fraud/manual review flag |
 | `FULFILLING` | `COMPLETED` ■ | all items fulfillment `COMPLETED` |
 | `FULFILLING` | `PARTIALLY_COMPLETED` | some items done, others `FAILED` |

@@ -121,7 +121,7 @@ Rules:
 
 1. **Consume on verify.** In the payment-success transaction the reservation is moved `ACTIVE → CONSUMED` by a conditional UPDATE (`WHERE status='ACTIVE' AND expires_at > now()`). Only a `CONSUMED` reservation permits `digital_codes → SOLD`.
 2. **DB-level guard [VERIFIED].** A `BEFORE UPDATE` trigger on `digital_codes` rejects `→ SOLD` unless the code's reservation is `CONSUMED` (prototype `003_orders_payments.sql`, test group "LATE PAYMENT"). Even buggy application code cannot deliver from an expired/released/re-assigned reservation. A `SOLD` code is immutable except `SOLD → VOID` (found and fixed during prototype testing: an earlier draft allowed re-pointing a SOLD code to another order item).
-3. **Verification grace (decided: initial 5 minutes, configurable — `PAYMENT_VERIFY_GRACE_SECONDS`, default 300).** When a payment enters `VERIFYING`, its still-ACTIVE reservation's `expires_at` is extended once by the grace window and the sweeper skips reservations that have a payment in `VERIFYING`. The grace **never** revives an already EXPIRED/RELEASED reservation and never permits delivery without a CONSUMED reservation; if the reservation had already lapsed when verification completes, rule 4 applies unchanged.
+3. **Verification grace (technical default `PAYMENT_VERIFY_GRACE_SECONDS=300`, configurable — NOT an approved business-policy value, see D9).** When a payment enters `VERIFYING`, the orchestrator (`orders`) calls `inventory.extendForVerification()`, which moves a still-ACTIVE, unexpired reservation's `expires_at` forward once. The sweeper stays payment-agnostic (inventory knows nothing about payments); it simply respects `expires_at`. The grace **never** revives an already EXPIRED/RELEASED reservation and never permits delivery without a CONSUMED reservation; if the reservation had already lapsed when verification completes, rule 4 applies unchanged.
 4. **Late payment path.** If consume returns `LATE` (reservation EXPIRED/RELEASED, or order EXPIRED/CANCELLED):
    - the payment is still recorded as `SUCCEEDED` (the money genuinely arrived) and posted to the ledger into the **suspense account** `SUSPENSE_UNRESOLVED_RECEIPTS`, not to revenue/prepayment (§9.2);
    - the order moves to `ON_HOLD` with an open `order_holds` row (`reason = LATE_PAYMENT_NO_RESERVATION`); no fulfillment task is created;
@@ -130,7 +130,7 @@ Rules:
    - **Re-reserve:** create a *new* reservation through the normal atomic path (same `SKIP LOCKED` logic, new TTL). If every item is obtained, consume it, reclassify suspense → normal posting, `ON_HOLD → PAID`, continue standard fulfillment. This is the only route to delivery and uses fresh stock, not the lapsed reservation. The original order price snapshot is honoured.
    - **Wait for restock / substitute:** keep on hold; substitution changes order items with customer consent, and any price difference is refunded.
    - **Refund to wallet** (suspense → customer wallet) or **refund to gateway** (via refund workflow, only if the gateway supports it).
-6. **Automation level (decided 2026-11-01):** in v1 every late payment is reviewed and settled **manually**. No automatic re-reservation exists in v1; the `late_payment.auto_rereserve` flag is not implemented (a later version may reconsider it as a separate decision).
+6. **Automation level (working rule, pending final approval D9):** in v1 every late payment is reviewed and settled **manually**. No automatic re-reservation exists in v1; the `late_payment.auto_rereserve` flag is not implemented. The complete late-payment policy still requires owner approval.
 7. **Alerts:** holds older than a threshold (proposal 30 min) raise an alert; a hold cannot silently age.
 8. Orders still `PENDING_PAYMENT` whose reservation expires become `EXPIRED` (no money involved). If a gateway success arrives afterward, rule 4 applies.
 
@@ -314,7 +314,7 @@ Correctness tests (fast, deterministic, in CI) and stress tests (slow, separate 
 
 Proven at SQL-primitive level (40 checks, see `docs/db-prototypes/LAST_RUN.txt`): ledger invariants; S1 allocation core (1,000 attempts → exactly 10); S2 wallet floor (500 debits); counted-stock floor; duplicate callback and supplier-submission idempotency; late-payment delivery guard. **Not yet proven:** the application-level paths (C5, C10, S1 end-to-end, S2 via services), generic transition-rule triggers (C8).
 
-## 17. Retention (proposal) **[OPEN: legal review]**
+## 17. Retention (PROPOSAL ONLY — nothing is deleted, purged or crypto-shredded until a policy is approved; Phase 2b implements no such path) **[OPEN: legal review]**
 - Financial/ledger/orders/payments: retain indefinitely (or per Iranian tax/accounting rules — to be confirmed).
 - Delivered secrets: encrypted payload kept for a customer-visible window (e.g. 12 months), then crypto-shredded (DEK destroyed) while the metadata/hash remain.
 - `payment_events` raw payloads: 24 months then redact. Audit logs: ≥ 24 months. Sessions: 30 days after expiry.

@@ -3,12 +3,13 @@
 Status v0.2. Decisions already made live in `DECISIONS.md` and are **not** repeated as questions. Only unresolved items remain here, with my recommendation.
 
 ## Previously open, now RESOLVED (see DECISIONS.md)
-D1 money unit (Rial) · D2 ORM (Drizzle) · D3 login (mobile OTP; email attachable) · D4 gateway (not selected, adapter only) · D5 fulfillment scope · D6 split payment (none) · D7 Docker/Redis (none) · **D9 (2026-11-01): late payments are manual-review only in v1; verification grace = 5 min initial, configurable, never permits expired-reservation use.**
+D1 money unit (Rial) · D2 ORM (Drizzle) · D3 login (mobile OTP; email attachable) · D4 gateway (not selected, adapter only) · D5 fulfillment scope · D6 split payment (none) · D7 Docker/Redis (none) (D9 was wrongly listed here and is **re-opened below**).
 
 ## Blocking before Phase 2 can start
 | ID | Question | Recommendation |
 |---|---|---|
 | D8 | **Hosting/VPS provider and KEK custody method — remains OPEN (confirmed 2026-11-01); the architecture must keep secure key management and recovery possible (`KeyProvider` port, versioned KEK, rotation, tested recovery).** Who holds the KEK backup shares? Managed or self-managed PostgreSQL with PITR? | Domestic VPS, self-managed PG with WAL archiving; KEK as root-only file + offline split backup with named custodians; run a recovery drill before launch. Scaffold (2a) can start without this, but **no real secrets/inventory** may be loaded before it is settled. |
+| D9 | **Late-payment policy — needs your final approval.** Working rule: manual review/settlement only; `PAYMENT_VERIFY_GRACE_SECONDS=300` is a *technical default*, not a business decision; hold-age alert threshold (30 min proposed); allowed settlement options (re-reserve / wait-or-substitute / refund to wallet / refund to gateway). | Must be approved before 2b-8 acceptance. |
 | D10 | **Accountant review (pre-launch gate; decision 2026-11-01: stays PROPOSED, revenue-recognition mode is NOT an admin-panel setting)** of Chart of Accounts (DATABASE_DESIGN §9.2): revenue recognition (on payment vs on delivery), VAT, COGS method, treatment of gateway fees/settlement. | Needed before launch; development proceeds on Mode B as an explicitly provisional assumption. |
 
 ## Business / product
@@ -55,3 +56,11 @@ See `SECURITY.md §12`: sanctions and publisher ToS for foreign gaming products,
 | G2 | Licence status of Soda/GetLayers and of each 21st.dev/Aceternity component. |
 | G3 | Does #6 (Sidebar + Dashboard) serve admin, customer dashboard, or both? |
 | G4 | Brand name/logo/tone of voice (Persian copy). |
+
+## Phase 2b planning items (see PHASE_2B_PLAN.md §7 and §9)
+| ID | Item | Needed by |
+|---|---|---|
+| P-1…P-9 | Cross-cutting proposals (cross-module FK policy, merged phase numbering, trigger-based transition engine, DB roles/grants, test-double isolation, Clock, no-deletion rule, no new dependencies, Rial type) | before 2b-1a |
+| DEP | Decide on npm `overrides` candidate for audit findings (DEPENDENCY_AUDIT §3) | before 2b-1a |
+| CI | Branch protection/required check, SHA-pinned actions, audit step (CI run #1 passed) | 2b-1a |
+| B11 | Default admin role/permission matrix — will be proposed in the 2b-3 step plan | 2b-3 |
