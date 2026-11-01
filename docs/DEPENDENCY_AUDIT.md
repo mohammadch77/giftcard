@@ -1,5 +1,7 @@
 # DEPENDENCY_AUDIT.md
 
+**Status (fourth review): option C (`overrides`) APPLIED as an independent commit** — `"minimatch": "11.0.3"` and `"@esbuild-kit/core-utils": {"esbuild": "0.25.12"}` (exact pins). After it: `npm audit` and `npm audit --omit=dev` both report 0 vulnerabilities; lint, typecheck, arch, 19 unit tests, 7 DB tests, drift check, `next build`, `drizzle-kit generate` ("No schema changes") and migrations on a fresh PostgreSQL all pass; the 40 SQL prototype checks still pass; CI result is recorded in §4. **Maintenance rule:** remove the overrides when eslint/typescript-eslint/drizzle-kit ship releases that depend on patched versions, and re-run the full suite on every eslint/typescript-eslint/drizzle-kit upgrade. `npm audit fix --force` remains forbidden.
+
 Audit date: 2026-11-01 · `npm audit` (registry advisory data of that day) · lockfile of commit `a2719c7`. **No dependency was changed by this document.**
 
 ## 1. Summary (corrects an earlier imprecise statement)

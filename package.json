@@ -2,7 +2,7 @@
   "name": "giftcard-store",
   "version": "0.0.0",
   "private": true,
-  "description": "Digital gaming & subscription store (Iran market) — modular monolith. See docs/.",
+  "description": "Digital gaming & subscription store (Iran market) \u2014 modular monolith. See docs/.",
   "engines": {
     "node": ">=22"
   },
@@ -45,5 +45,11 @@
     "typescript": "6.0.3",
     "typescript-eslint": "8.72.1",
     "vitest": "5.0.5"
+  },
+  "overrides": {
+    "minimatch": "11.0.3",
+    "@esbuild-kit/core-utils": {
+      "esbuild": "0.25.12"
+    }
   }
 }
