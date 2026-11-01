@@ -1,6 +1,6 @@
 # SECURITY.md
 
-Status: **DRAFT v0.1 — Phase 1.** Describes the intended security design. Nothing is implemented or verified yet; no claim of production readiness.
+Status: **DRAFT v0.2 — Phase 1, aligned with decisions D1–D7.** Describes the intended security design. Nothing is implemented or verified yet; no claim of production readiness.
 
 ## 1. Assets and threat model (what is worth attacking)
 | Asset | Why | Primary threats |
@@ -18,7 +18,7 @@ Status: **DRAFT v0.1 — Phase 1.** Describes the intended security design. Noth
 - Per-secret random 256-bit **DEK**; payload encrypted with **AES-256-GCM**, unique 96-bit nonce, **AAD = table + row id + kind** (prevents moving ciphertext between rows).
 - DEK wrapped by a **KEK** that is **not stored in the database** (loaded from a root-only file or secret store on the server; never in `NEXT_PUBLIC_*`, never in the repo, never in logs). Implement with Node `crypto`; no hand-rolled primitives.
 - `kek_version` stored per row. **Rotation:** introduce KEK v(n+1) → background job re-wraps DEKs (payloads untouched) → retire v(n). Rotation runbook and a rotation test are required before launch.
-- KEK backup: offline, split custody (e.g. Shamir shares) **[OPEN: operational decision]**. Losing the KEK = losing all codes; this is the #1 operational risk.
+- **KEK custody method is NOT decided (decision D7/D8 — needs review and approval).** Options to evaluate: root-only file on the app host + offline split backup (e.g. Shamir shares held by named people), or a self-hosted secret manager. Whatever is chosen must provide: KEK never in DB/repo/logs, tested recovery, rotation. Losing the KEK = losing all codes; this is the #1 operational risk.
 - No cloud KMS assumed (availability from Iran uncertain). Interface `KeyProvider` allows a KMS/HSM later.
 
 ### 2.2 Duplicate-detection hash
@@ -27,11 +27,15 @@ Status: **DRAFT v0.1 — Phase 1.** Describes the intended security design. Noth
 ### 2.3 Other secrets
 Passwords: **argon2id** (tuned params, per-hash salt). OTPs / reset tokens / session tokens: stored hashed, short TTL, single-use. Env secrets validated at boot by a Zod schema; process refuses to start if missing. `.env*` in `.gitignore`; secret scanning in CI.
 
-## 3. Authentication & sessions
-- Login method **[OPEN]** (phone+OTP is the local norm; email+password also in scope). Either way: rate limits per IP *and* per identifier, generic error messages, constant-time comparison, lockout/backoff, OTP resend cooldown, SMS-pumping cost cap.
-- Server-side sessions: random 256-bit token, stored hashed; cookie `HttpOnly; Secure; SameSite=Lax; Path=/`, `__Host-` prefix. Rotate on login/privilege change; absolute + idle timeouts; user can list/revoke sessions.
-- **Admin:** mandatory TOTP 2FA, shorter idle timeout, re-authentication (step-up) for sensitive actions (reveal codes, ledger adjustment, credential change, role change), optional IP allowlist.
-- Password reset: single-use hashed token, 15-minute TTL, invalidates all sessions.
+## 3. Authentication & sessions (decision D3: mobile OTP primary)
+- **OTP flow:** the OTP is random, ≥ 6 digits, stored **hashed**, single-use, TTL ~2 min, ≤ 5 attempts per challenge, constant-time compare; consumption is one conditional UPDATE so concurrent submissions cannot reuse a code. Generic responses (no "phone exists / not exists" oracle on login; registration and login share a verify step).
+- **Abuse limits (SMS pumping, enumeration):** per-phone and per-IP and global rate limits, resend cool-down, daily SMS cap per identity, spend alarm, optional CAPTCHA/proof-of-work challenge after repeated requests, blocklist for premium-rate/ unexpected prefixes. SMS provider is **not selected**; OTP delivery sits behind the `SmsProvider` port, and the OTP code must never be logged.
+- **SIM-swap / OTP interception** is an inherent weakness of SMS OTP: sensitive actions (reveal old purchases, change phone, withdraw-type actions, large wallet use) can require **step-up** (fresh OTP) and show security notifications; email can be linked as a second recovery/notification channel (architecture reserved; feature later).
+- **Changing the phone number** is a high-risk recovery flow: requires OTP to the *old* number (or manual support verification with audit) plus OTP to the new one, cool-down period, notification.
+- **Email attach (future-ready):** `user_identities(type=EMAIL)` verified by link/OTP; never used for login until explicitly enabled.
+- Passwords are not part of the v1 primary flow; if enabled later: argon2id.
+- Server-side sessions: random 256-bit token stored hashed; cookie `HttpOnly; Secure; SameSite=Lax; Path=/`, `__Host-` prefix; rotate on login/privilege change; absolute + idle timeouts; list/revoke sessions.
+- **Admin:** OTP **plus** mandatory TOTP 2FA, short idle timeout, step-up for sensitive actions (reveal codes, ledger adjustment, credential change, role change, hold resolution), optional IP allowlist. Admin phone numbers are allow-listed identities, not self-registered.
 
 ## 4. Authorization
 - RBAC with granular permission codes (§ DATABASE_DESIGN §3); deny by default; checks in the application layer entry points, not in UI.
@@ -46,10 +50,17 @@ Passwords: **argon2id** (tuned params, per-hash salt). OTPs / reset tokens / ses
 4. UI masks by default with explicit reveal; no secrets in client-side state beyond the reveal view; no analytics scripts on those pages.
 5. Account-type products: store only the minimum (credentials + required delivery notes); no unnecessary personal data.
 
+## 5a. Late payment, refunds and disclosure records (decisions 8–9)
+- Delivery is impossible without a `CONSUMED` reservation (DB-enforced, prototype-verified). A payment that arrives after the reservation lapsed creates an `ON_HOLD` order and a **suspense** ledger posting; staff must resolve it with `orders.resolve_hold` (audited, mandatory note). Nothing is delivered from stale state.
+- Every reveal of a secret is logged append-only and updates `first_revealed_at/reveal_count`; refund eligibility is computed from these facts. Overriding a refund denial for a revealed item needs `refunds.override_revealed` + written reason. Final refund rules are a **pending business and legal decision**; launch defaults are conservative (review required for anything delivered).
+- Limitation to state to stakeholders: the system cannot know whether a customer *used* a code, only that it was shown.
+
 ## 6. Payment security
 - **Never trust the browser redirect.** Success only after server-to-server verification (or verified signed webhook where the gateway supports it) with amount and reference matching the stored payment.
 - Callback endpoint: strict input validation, no state change before verification, idempotent via `payment_events` unique key + conditional state update, rate limited, never reveals internal state.
-- No card data ever stored or logged. Gateway credentials in encrypted settings/env.
+- No card data ever stored or logged. Gateway credentials in encrypted settings/env. **No gateway selected yet** — signature/verification details wait for the chosen gateway's documentation.
+- Amounts are integer Rial everywhere; callback amount comparison is exact integer equality.
+- Wallet-or-gateway only (no split payments), which removes a class of partial-failure states.
 - Amount mismatch, unknown reference, or repeated failures → `NEEDS_REVIEW` + alert.
 - Gateway-specific signature/verification scheme: **unknown until documentation is provided**; nothing is assumed.
 

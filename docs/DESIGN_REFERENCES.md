@@ -1,37 +1,32 @@
 # DESIGN_REFERENCES.md
 
-Status: **registry only.** No component source code has been supplied into the repository or this conversation yet — only names/sources and (from the earlier brief) a summary of dependencies. Therefore **no compatibility inspection has been performed**, and none is claimed. Final design is deferred to Phase 5, after all six references are received and reviewed.
+Status v0.2 — **registry and availability audit only.** Final design has NOT started and will not until all six references are provided and reviewed.
 
-| # | Reference | Source | Intended use (provisional) | Status |
-|---|---|---|---|---|
-| 1 | Soda — GetLayers E-commerce template | GetLayers | layout/UX reference for store pages | name only; no files; **licence/terms unverified** |
-| 2 | Hero Section with Media — Redrob Labs | 21st.dev | homepage hero (provisional) | name only; code not received |
-| 3 | Bento Grid | 21st.dev / Aceternity | gaming category/platform grid (provisional) | name only; code not received |
-| 4 | Spotlight Card | — | **pending** | not provided |
-| 5 | Display Cards | — | **pending** | not provided |
-| 6 | Sidebar + Dashboard | — | admin/customer dashboard shell (provisional) | not provided |
+## What I actually have access to (audited against the full conversation and the repository)
+The repository is empty. In the conversation I received **text descriptions only** — no source code, no files, no URLs, no screenshots, for any reference. The table separates what is *registered by name/description* from what is *available as code*.
 
-## Known dependency notes (from the brief — unverified until code is provided)
-**Hero (#2)** — React; local `cx` utility; local icons utility; custom `rr-hero*` CSS classes.
-- To verify on receipt: contents of `cx` (class joiner, likely replaceable by shadcn `cn` — only if behaviour is identical), icons module (which icons, SVG vs library), full `rr-hero` CSS (variables, keyframes, media queries), any fonts/images/video, RTL behaviour (physical `left/right`, `translateX`, gradients, marquee direction), `prefers-reduced-motion`, a11y of media (alt, controls, autoplay policy), client-component needs (`"use client"`).
-- Do not silently replace its custom CSS/utilities; port them as-is first, then adapt tokens.
+| # | Reference | Registered as | Source code available to me? | What I know (from your descriptions) | Compatibility checked? |
+|---|---|---|---|---|---|
+| 1 | Soda — GetLayers E-commerce template | named in both master prompts | **No** | nothing beyond the name | **No** |
+| 2 | Hero Section with Media — Redrob Labs (21st.dev) | named; dependencies summarised in master prompt v1 §12 | **No** | uses React; a local `cx` utility; a local icons utility; custom `rr-hero*` CSS classes | **No** — I have not seen `cx`, the icons module, or the CSS, so I cannot confirm or deny compatibility |
+| 3 | Bento Grid (21st.dev / Aceternity) | named; dependencies summarised in master prompt v1 §12 | **No** | uses Tailwind CSS; `@radix-ui/react-icons`; shadcn `Button`; `cn` from `lib/utils` | **No** — the `Button`/`cn`/icon dependencies are *expected* to be satisfiable by a shadcn setup, but nothing has been inspected |
+| 4 | Spotlight Card | named as pending (master prompt v2) | **No** | — | No |
+| 5 | Display Cards | named as pending | **No** | — | No |
+| 6 | Sidebar + Dashboard | named as pending | **No** | — | No |
 
-**Bento Grid (#3)** — Tailwind CSS; `@radix-ui/react-icons`; shadcn `Button`; `cn` from `lib/utils`.
-- Requires: `components/ui/button.tsx` (shadcn), `lib/utils.ts` exporting `cn` (clsx + tailwind-merge), `@radix-ui/react-icons`, Tailwind config including its paths and any custom animation/keyframes the Aceternity original defines.
-- To verify: Tailwind v3 vs v4 class syntax compatibility, grid breakpoints, card heights on mobile, RTL (`col-start`, `rounded-l-*`, `text-left`), hover-only affordances (touch), keyboard focus, content slots for category cards.
-- Content: replace generic demo features with real categories/platforms (Steam, PlayStation, Xbox, Nintendo, Spotify, Discord, …) — to be defined with the owner.
+Note on consistency with the earlier brief: the first brief said "three provided / three pending" and the second brief renumbers them 1–6 with the same three provided (Soda, Hero, Bento) and pending Spotlight Card, Display Cards, Sidebar + Dashboard. This document follows the second brief. In both, "provided" meant *named and described*, not *code delivered into the session*. If you pasted code earlier in a different session, it is not visible in this one — please re-send it.
 
-**Soda (#1)** — template reference; check licence (paid/free?) before copying any assets/code. **Brief says no paid templates without approval.**
+## What I need from you (per reference)
+1. The full source of the component file(s), plus every local helper it imports (`cx`, icons module, etc.) and its CSS (all `rr-hero*` rules, keyframes, variables).
+2. Asset files (images/video/fonts) or their intended replacements.
+3. Original URL and **licence** (Soda/GetLayers: free or paid? — the brief forbids paid templates without approval; 21st.dev/Aceternity components: usage terms).
+4. Whether #6 serves admin, customer dashboard, or both.
 
-## Integration plan (Phase 5, after all six are in)
-1. Receive full source for each (component file + utils + CSS + assets).
-2. Per component, fill an inspection sheet: dependencies, imports, props, CSS, responsiveness, a11y, RTL, motion, licence.
-3. Scaffold shared prerequisites once: Tailwind config + CSS variable tokens, `lib/utils.ts (cn)`, shadcn `Button`, font setup.
-4. Place under `src/ui/` as presentational components (no domain logic); content passed via props; store content lives in the feature layer.
-5. Adapt colours/typography/spacing to tokens; convert physical to logical CSS properties; add `prefers-reduced-motion`; verify at 360/768/1280 px in RTL and LTR.
-6. Record any deviation from the original with a technical reason.
+## Inspection sheet (to complete per component on receipt — nothing filled yet)
+dependencies · imports · props · CSS requirements · responsiveness · accessibility · RTL behaviour (physical `left/right`, transforms, gradients, marquee direction) · motion & `prefers-reduced-motion` · client/server component needs · Tailwind v3/v4 syntax · licence · required project prerequisites · proposed adaptation.
 
-## Open points
-- Provide the actual code (paste or files) for each reference when ready.
-- Confirm licence/permission for Soda/GetLayers and each 21st.dev component.
-- Confirm whether #6 (Sidebar + Dashboard) serves admin, customer dashboard, or both.
+## Prerequisites expected from the project (not yet created — no scaffold)
+Tailwind configured with design tokens; shadcn initialised (provides `components/ui/button.tsx`); `lib/utils.ts` exporting `cn` (clsx + tailwind-merge); `@radix-ui/react-icons` only if Bento is kept as supplied; self-hosted Vazirmatn/Inter; logical-property CSS conventions for RTL.
+
+## Integration rules (unchanged)
+Preserve each component's behaviour; do not replace or invent substitutes; port supplied CSS/utilities as-is first and adapt tokens afterwards; document every deviation with a technical reason; store-specific content (Steam, PlayStation, Xbox, Nintendo, Spotify, Discord …) is supplied via props, never hard-coded from demo text. Visual integration happens in Phase 5 only.

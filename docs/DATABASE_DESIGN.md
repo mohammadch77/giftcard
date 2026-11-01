@@ -1,6 +1,6 @@
 # DATABASE_DESIGN.md
 
-Status: **DRAFT v0.1 — Phase 1, awaiting review.** Nothing here is implemented in the application yet.
+Status: **DRAFT v0.2 — Phase 1, updated with decisions D1–D7 (see `DECISIONS.md`); awaiting review.** Nothing here is implemented in the application yet.
 Target: PostgreSQL 16+ (16.15 verified locally for the prototypes in `docs/db-prototypes/`).
 
 Items marked **[OPEN]** depend on a decision listed in `OPEN_QUESTIONS.md`. Items marked **[VERIFIED]** were executed against PostgreSQL 16 via `docs/db-prototypes/test_prototypes.sh`.
@@ -10,40 +10,45 @@ Items marked **[OPEN]** depend on a decision listed in `OPEN_QUESTIONS.md`. Item
 ## 1. Principles
 
 1. **The database is the last line of defence.** Application checks are necessary but never sufficient. Every invariant that can be a constraint, trigger or unique index *is*.
-2. **Money = integer.** `bigint` in the smallest unit; never `float`/`numeric` arithmetic in app code. Percentages are applied with one explicit, tested rounding rule (see §9.3).
+2. **Money = integer RIAL (decision D1).** Every monetary column is `bigint` holding **Rials**; never `float`/`numeric` arithmetic in app code. The UI displays **Toman** (`rial / 10`). Conversion exists in exactly one place (`platform/money`: `rialToToman`, `tomanToRial`, `formatToman`) used by the UI formatting layer, admin input forms and nowhere else — domain code, SQL, gateway adapters and the ledger only ever see Rials. Catalog prices, sale prices and fixed-discount values are constrained to **multiples of 10 Rial** (`CHECK (price % 10 = 0)`) so the Toman shown to customers is always exact; computed percentage discounts are floored to a multiple of 10 Rial for the same reason. Ledger amounts may be any positive integer Rial. Percentages are applied with one explicit, tested rounding rule (see §9.3).
 3. **Financial and inventory history is append-only.** Corrections are new compensating rows, never `UPDATE`/`DELETE`.
 4. **Status is data with history.** Every state machine has (a) a CHECK-constrained status column, (b) an append-only transition history table, (c) a transition-rule table enforced by trigger (§8).
 5. **Secrets are never plaintext columns.** Codes, credentials, supplier keys are encrypted (envelope); lookups use a keyed hash (§6).
 6. **Time** is `timestamptz` in UTC. Jalali conversion is purely a presentation concern.
-7. **IDs.** Internal PKs: `bigint identity` for high-volume append-only tables (ledger, events, movements); `uuid` (v7, app-generated or PG18 `uuidv7()`) for entities exposed in URLs/APIs (orders, tickets, users). Human order numbers are a separate unique column (non-sequential-guessable). **[OPEN: PG version]**
+7. **IDs.** Internal PKs: `bigint identity` for high-volume append-only tables (ledger, events, movements); `uuid` (v7, app-generated or PG18 `uuidv7()`) for entities exposed in URLs/APIs (orders, tickets, users). Human order numbers are a separate unique column (non-sequential-guessable). **[OPEN T2: production PG version]**
 8. **No physical deletes** of financial, order, payment, fulfillment, audit, or ledger rows. Catalog rows are archived (`archived_at`), not deleted, once referenced.
-9. **Single currency (IRT) in v1**, but every money-bearing table carries `currency char(3)` with a CHECK, so adding currencies later is a migration, not a redesign. **[OPEN: Toman vs Rial base unit]**
+9. **Single currency (IRR) in v1**, but every money-bearing table carries `currency char(3)` with `CHECK (currency = 'IRR')`, so adding currencies later is a migration, not a redesign.
 
 ## 2. Schema overview (module → tables)
 
 | Module | Tables |
 |---|---|
-| identity | `users`, `user_credentials`, `user_sessions`, `verification_tokens`, `roles`, `permissions`, `role_permissions`, `user_roles`, `user_security_events` |
+| identity | `users`, `user_identities`, `otp_challenges`, `user_credentials` (optional), `user_sessions`, `verification_tokens`, `roles`, `permissions`, `role_permissions`, `user_roles`, `admin_totp` |
 | catalog | `categories`, `brands` (platforms/games), `products`, `product_variants`, `attribute_schemas`, `product_images`, `variant_price_history`, `regions` |
 | inventory | `inventory_batches`, `digital_codes`, `stock_counters`, `inventory_reservations`, `inventory_movements` |
 | suppliers | `suppliers`, `supplier_credentials`, `supplier_products`, `variant_supplier_routes`, `supplier_orders`, `supplier_order_events` |
-| orders | `carts`, `cart_items`, `orders`, `order_items`, `order_status_history`, `order_discounts` |
-| payments | `payments`, `payment_events`, `refunds`, `refund_status_history`, `payment_status_history` |
+| orders | `carts`, `cart_items`, `orders`, `order_items`, `order_status_history`, `order_holds`, `order_discounts` |
+| payments | `payments`, `payment_events`, `refunds`, `refund_items`, `refund_status_history`, `payment_status_history` |
 | ledger/wallet | `ledger_accounts`, `ledger_transactions`, `ledger_entries`, `ledger_account_balances`, `wallet_topups` |
-| fulfillment | `fulfillment_tasks`, `fulfillment_events`, `deliveries`, `delivery_secrets`, `secret_access_log` |
+| fulfillment | `fulfillment_tasks`, `fulfillment_events`, `deliveries`, `delivery_secrets`, `secret_access_log` (reveal events) |
 | promotions | `discount_codes`, `discount_code_rules`, `discount_redemptions`, `campaigns`, `campaign_targets` |
 | support | `tickets`, `ticket_messages`, `ticket_attachments`, `ticket_status_history` |
 | platform | `idempotency_keys`, `outbox_events`, `notifications`, `audit_logs`, `state_transition_rules`, `encryption_keys` (metadata only), `system_settings`, `fraud_flags` |
 
-This is a proposed inventory. Candidates to *drop or defer* if review agrees: `variant_price_history` (derive from audit log), `user_security_events` (merge into `audit_logs`), `fraud_flags` (start as a column on orders).
+This is a proposed inventory. Candidates to *drop or defer* if review agrees: `variant_price_history` (derive from audit log), `fraud_flags` (start as a column on orders).
 
 ## 3. Identity & access
 
-- `users(id uuid PK, phone text UNIQUE, email citext UNIQUE NULL, status, created_at, …)`. Iranian norm is **phone/OTP login** — phone is normalised to E.164 (`+98…`) before storage; CHECK on format. **[OPEN: login method]**
-- `user_credentials(user_id PK/FK, password_hash, algo, updated_at)` — **argon2id** hashes only. Separate table so it is never accidentally selected with the user row.
+**Decision D3: primary registration/login = mobile OTP. Email can be attached later. SMS provider not selected.**
+
+- `users(id uuid PK, status, display_name, created_at, …)` — contains no login identifier itself.
+- `user_identities(id, user_id, type ∈ PHONE|EMAIL, value, verified_at, is_primary, created_at)` with `UNIQUE(type, value)` and a partial unique index guaranteeing one primary identity per type per user. v1 requires a verified `PHONE` identity for every customer; `EMAIL` is optional and linkable later (OTP-proven phone first, then email verified by link/OTP). Phone is normalised to E.164 (`+98…`) with a CHECK; email is `citext`, lower-cased. Adding a future login method (e.g. OAuth) = new `type` value, not a schema redesign.
+- `otp_challenges(id, identity_type, identity_value, purpose ∈ LOGIN|REGISTER|ADD_EMAIL|STEP_UP, code_hash, attempts, max_attempts, expires_at, consumed_at, ip, created_at)` — the OTP itself is stored **hashed**, single-use, short TTL (e.g. 2 min), limited attempts, resend cool-down and per-identity/per-IP daily caps (SMS cost abuse). Consumption is a conditional UPDATE (`WHERE consumed_at IS NULL AND expires_at > now() AND attempts < max_attempts`).
+- SMS delivery sits behind a `SmsProvider` port; **no provider is selected and none is faked in production configuration**. Until one is chosen the OTP flow can be developed only against a clearly named test double that is rejected at boot when `NODE_ENV=production`.
+- `user_credentials(user_id PK/FK, password_hash, algo, updated_at)` — **optional**; not used in v1 unless later decided (argon2id when present). Separate table so hashes are never selected with the user row.
 - RBAC: `roles`, `permissions(code unique, e.g. 'ledger.adjust', 'codes.reveal', 'orders.refund')`, `role_permissions`, `user_roles`. Permissions are code-defined constants seeded by migration; app checks permission codes, never role names.
-- Sensitive actions (`ledger.adjust`, `codes.reveal`, `suppliers.credentials.write`, `refunds.approve`) are separate permissions so no single "admin" owns everything. Optional four-eyes approval for adjustments above a threshold. **[OPEN]**
-- `user_sessions`: server-side sessions (hashed session token, ip, ua, last_seen, revoked_at) to allow "log out all devices". Admin accounts require TOTP 2FA.
+- Sensitive actions (`ledger.adjust`, `codes.reveal`, `suppliers.credentials.write`, `refunds.approve`, `orders.resolve_hold`) are separate permissions so no single "admin" owns everything. Optional four-eyes approval for adjustments above a threshold. **[OPEN B10]**
+- `user_sessions`: server-side sessions (hashed session token, ip, ua, last_seen, revoked_at) → "log out all devices". Admin accounts additionally require TOTP 2FA (`admin_totp`, secret stored with envelope encryption).
 
 ## 4. Catalog
 
@@ -61,7 +66,7 @@ categories (tree: parent_id, slug, path)         brands (Steam, PlayStation, Spo
 - **Variants are the sellable unit.** "Steam $20 US" and "Steam $50 US" are variants of one product. Cart, order items, stock, supplier mapping all reference `variant_id`, never `product_id`.
 - `product_variants.fulfillment_method` ∈ `AUTO_CODE | MANUAL | SUPPLIER_API`. Fulfillment is a **variant** property (a product can have an auto-code variant and a manual variant).
 - Attributes: *filterable/structural* ones are typed columns (`region_id`, `denomination` + `denomination_currency`, `duration_days`). *Descriptive/type-specific* ones live in `attrs jsonb`, validated at write time against `attribute_schemas(product_type, json_schema, version)` with Zod. This avoids EAV join explosions while keeping per-type validation. Variant `attrs` are snapshotted into `order_items` at purchase.
-- Pricing: `product_variants.price bigint CHECK (price >= 0)`, `sale_price bigint NULL CHECK (sale_price IS NULL OR sale_price < price)`, `sale_starts_at/ends_at` with CHECK (ends > starts). Price changes append to `variant_price_history`. Campaign/code discounts are *not* stored in variants.
+- Pricing (all **Rial**, decision D1): `product_variants.price bigint CHECK (price >= 0 AND price % 10 = 0)`, `sale_price bigint NULL CHECK (sale_price IS NULL OR (sale_price < price AND sale_price % 10 = 0))`, `sale_starts_at/ends_at` with CHECK (ends > starts). The `% 10` constraint guarantees an exact Toman display. Price changes append to `variant_price_history`. Campaign/code discounts are *not* stored in variants.
 - Publication: `status ∈ DRAFT|PUBLISHED|ARCHIVED`; a variant can only be PUBLISHED if its product is.
 
 ### 4.2 Constraints
@@ -74,7 +79,7 @@ categories (tree: parent_id, slug, path)         brands (Steam, PlayStation, Spo
 | Shape | Used by | Representation |
 |---|---|---|
 | **Itemised** | `AUTO_CODE` gift cards, pre-loaded accounts | one row per item in `digital_codes` |
-| **Counted** | `MANUAL`, `SUPPLIER_API` (no pre-loaded items) | `stock_counters(variant_id, available, reserved, CHECK available>=0 AND reserved>=0)`, `NULL`/unlimited allowed for supplier-backed items |
+| **Counted** | the store's manually managed stock (`MANUAL`), and `SUPPLIER_API` (no pre-loaded items) | `stock_counters(variant_id, available, reserved, CHECK available>=0 AND reserved>=0)`, `NULL`/unlimited allowed for supplier-backed items |
 
 ### 5.2 `digital_codes` (prototype **[VERIFIED]**: `docs/db-prototypes/002_inventory.sql`)
 
@@ -103,12 +108,31 @@ Rules:
 3. `SKIP LOCKED` means concurrent buyers take *different* rows instead of queueing; `FOR UPDATE` + the status predicate prevents the same row going to two buyers.
 4. **[VERIFIED]** 1,000 attempts × 50 parallel clients vs 10 codes → exactly 10 reservations, 0 duplicates (`test_prototypes.sh`). This proves the primitive, not the full purchase flow; the full-flow stress test is specified in §16.
 5. TTL default 15 min **[OPEN]**. Expiry worker: `UPDATE … SET status='AVAILABLE', reservation_id=NULL WHERE status='RESERVED' AND reserved_until < now()` + reservation→`EXPIRED` + movement row, using `SKIP LOCKED`. Checkout also opportunistically sweeps expired reservations for the variant it is reserving.
-6. **Late payment** (gateway success after reservation expiry): payment is recorded, then the system tries to re-reserve. On failure the order goes `ON_HOLD`/needs-refund and the money is credited to the customer's wallet or flagged for refund — *never* silently kept without delivery. **[OPEN: policy]**
+6. **Late payment** (verified payment whose reservation is no longer ACTIVE): the lapsed reservation is never used for delivery; see §5.5 for the full policy.
 7. Counted stock: `UPDATE stock_counters SET available=available-$n, reserved=reserved+$n WHERE variant_id=$v AND available>=$n` (affected rows = 0 ⇒ insufficient).
 
 ### 5.4 Movements
 
 `inventory_movements(id, variant_id, code_id NULL, type, qty_delta, reservation_id, order_item_id, reason, actor, created_at)` — append-only (trigger). Types: `IMPORT, RESERVE, RELEASE, SELL, VOID, RETURN_TO_STOCK, ADJUST`. For itemised stock, `available` = count of AVAILABLE rows; a reconciliation job asserts it equals the sum of movements. `inventory_batches(supplier_id, cost_per_unit, currency, purchased_at, import_checksum)` holds cost basis (needed for COGS) and de-duplicates re-uploaded files.
+
+### 5.5 Late payment, reservation expiry and settlement policy (decision 8)
+
+**Principle: a code is delivered only against a reservation that was ACTIVE when the payment was verified. If the reservation has lapsed, the order goes to review and settlement — it is never delivered from stale state.**
+
+1. **Consume on verify.** In the payment-success transaction the reservation is moved `ACTIVE → CONSUMED` by a conditional UPDATE (`WHERE status='ACTIVE' AND expires_at > now()`). Only a `CONSUMED` reservation permits `digital_codes → SOLD`.
+2. **DB-level guard [VERIFIED].** A `BEFORE UPDATE` trigger on `digital_codes` rejects `→ SOLD` unless the code's reservation is `CONSUMED` (prototype `003_orders_payments.sql`, test group "LATE PAYMENT"). Even buggy application code cannot deliver from an expired/released/re-assigned reservation. A `SOLD` code is immutable except `SOLD → VOID` (found and fixed during prototype testing: an earlier draft allowed re-pointing a SOLD code to another order item).
+3. **Verification grace.** When a payment enters `VERIFYING`, its reservation's `expires_at` is extended once by a configurable grace window (proposal: +5 min) and the sweeper skips reservations that have a payment in `VERIFYING`. This reduces avoidable late payments caused by slow gateway verification. **[proposal — confirm]**
+4. **Late payment path.** If consume returns `LATE` (reservation EXPIRED/RELEASED, or order EXPIRED/CANCELLED):
+   - the payment is still recorded as `SUCCEEDED` (the money genuinely arrived) and posted to the ledger into the **suspense account** `SUSPENSE_UNRESOLVED_RECEIPTS`, not to revenue/prepayment (§9.2);
+   - the order moves to `ON_HOLD` with an open `order_holds` row (`reason = LATE_PAYMENT_NO_RESERVATION`); no fulfillment task is created;
+   - outbox events notify the admin review queue and the customer ("payment received, your order is being settled").
+5. **Settlement options** (permission `orders.resolve_hold`, audited, each with a mandatory note):
+   - **Re-reserve:** create a *new* reservation through the normal atomic path (same `SKIP LOCKED` logic, new TTL). If every item is obtained, consume it, reclassify suspense → normal posting, `ON_HOLD → PAID`, continue standard fulfillment. This is the only route to delivery and uses fresh stock, not the lapsed reservation. The original order price snapshot is honoured.
+   - **Wait for restock / substitute:** keep on hold; substitution changes order items with customer consent, and any price difference is refunded.
+   - **Refund to wallet** (suspense → customer wallet) or **refund to gateway** (via refund workflow, only if the gateway supports it).
+6. **Automation level:** v1 default is *manual review for every late payment*. An optional config flag `late_payment.auto_rereserve` (default `false`) could attempt option 1 automatically; whether to ever enable it is a business decision. **[OPEN D5']**
+7. **Alerts:** holds older than a threshold (proposal 30 min) raise an alert; a hold cannot silently age.
+8. Orders still `PENDING_PAYMENT` whose reservation expires become `EXPIRED` (no money involved). If a gateway success arrives afterward, rule 4 applies.
 
 ## 6. Secret storage (summary; full detail in `SECURITY.md`)
 
@@ -120,18 +144,20 @@ Rules:
 ## 7. Orders
 
 ```
-orders(id uuid, number text UNIQUE, user_id, status, payment_status, currency,
-       subtotal, discount_total, total, wallet_applied, gateway_amount, placed_at, expires_at, …)
+orders(id uuid, number text UNIQUE, user_id, status, payment_status,
+       payment_method ∈ WALLET|GATEWAY, currency='IRR',
+       subtotal, discount_total, total, placed_at, expires_at, …)   -- all money in Rial
 order_items(id, order_id, variant_id, qty, unit_price, discount, line_total,
             name_snapshot, attrs_snapshot jsonb, fulfillment_method, fulfillment_status, …)
 ```
 - **Everything the customer saw is snapshotted** on the item (name, attrs, unit price). Later catalog edits never alter history.
-- CHECKs: `total = subtotal - discount_total`, `total >= 0`, `wallet_applied + gateway_amount = total`, `qty > 0`, `line_total = unit_price*qty - discount`.
+- CHECKs: `total = subtotal - discount_total`, `total >= 0`, `qty > 0`, `line_total = unit_price*qty - discount`.
 - Prices, discounts and totals are **recomputed server-side** inside the checkout transaction from DB rows; nothing monetary is accepted from the client.
 - The three concepts are separate: `orders.status` (lifecycle), `orders.payment_status` (aggregate cache of `payments`), `order_items.fulfillment_status` (per-item; source of truth is `fulfillment_tasks`). See `STATE_MACHINES.md`.
-- A split payment (wallet + gateway) is allowed: wallet portion is posted to the ledger only when the gateway portion verifies, or reserved with a ledger hold. **[OPEN: v1 = all-wallet OR all-gateway?]** (recommended: no split in v1).
+- **No split payment in v1 (decision D6).** An order is paid either entirely from the wallet (`payment_method = WALLET`, one ledger transaction, no gateway) or entirely through the gateway (`GATEWAY`). To use wallet money the customer tops up the wallet and pays by wallet. A partial-wallet/partial-gateway design is deliberately absent so there is no cross-instrument atomicity problem; adding it later is a new design, not a flag.
 - `order_status_history(order_id, from, to, reason, actor, created_at)` append-only.
-- **Cancellation rules:** `PENDING_PAYMENT` → customer/system may cancel (reservation released). After `PAID`, cancellation = refund workflow; delivered/revealed codes are not cancellable. **[OPEN: refund policy]**
+- `order_holds(id, order_id, reason ∈ LATE_PAYMENT_NO_RESERVATION|PAYMENT_NEEDS_REVIEW|FRAUD_REVIEW|FULFILLMENT_FAILED|SUPPLIER_UNKNOWN, opened_at, opened_by, resolved_at, resolution ∈ RESUMED|REFUND_WALLET|REFUND_GATEWAY|SUBSTITUTED|CANCELLED, resolved_by, note)`; partial unique index → at most one *open* hold per `(order_id, reason)`. An order is `ON_HOLD` iff it has an open hold (kept consistent by trigger).
+- **Cancellation rules:** `PENDING_PAYMENT` → customer/system may cancel (reservation released). After `PAID`, cancellation = refund workflow (§10.2); delivered/revealed codes are not cancellable by the customer.
 
 ## 8. State machine enforcement
 
@@ -145,7 +171,7 @@ Pattern applied to orders, payments, fulfillment tasks, reservations, supplier o
 
 ## 9. Ledger (wallet & accounting)
 
-Prototype **[VERIFIED]**: `docs/db-prototypes/001_ledger.sql`; tests: balanced txn accepted, unbalanced rejected at COMMIT, overdraft rejected, duplicate posting rejected, UPDATE/DELETE/TRUNCATE blocked, late entries into a committed transaction rejected.
+Prototype **[VERIFIED]**: `docs/db-prototypes/001_ledger.sql`; tests (see `db-prototypes/LAST_RUN.txt`): balanced txn accepted, unbalanced rejected at COMMIT, overdraft rejected, duplicate posting rejected, UPDATE/DELETE/TRUNCATE blocked, late entries into a committed transaction rejected, 500 parallel wallet debits never overdraw.
 
 ### 9.1 Structure
 - `ledger_accounts(type, normal_side, owner_type/owner_id, currency, min_balance)` — one **wallet account per user** (LIABILITY, `min_balance=0`), plus system accounts.
@@ -156,37 +182,59 @@ Prototype **[VERIFIED]**: `docs/db-prototypes/001_ledger.sql`; tests: balanced t
 - `pg_txid` guard: entries can only be inserted by the DB transaction that created their ledger_transaction.
 - App DB role has `INSERT/SELECT` only on ledger tables (no UPDATE/DELETE grant) as a second layer.
 
-### 9.2 Chart of accounts (v1 proposal — **[OPEN: confirm with an accountant]**)
+### 9.2 Proposed Chart of Accounts (decision 10 — **PROPOSAL; revenue-recognition timing NOT final until an accountant approves**)
 
-| Code | Type | Owner | Meaning |
-|---|---|---|---|
-| `CUSTOMER_WALLET` | Liability (credit-normal) | per user | store owes customer |
-| `GATEWAY_CLEARING` | Asset | per gateway | money captured by gateway not yet settled to bank |
-| `UNEARNED_REVENUE` | Liability | system | paid, not yet delivered |
-| `SALES_REVENUE` | Revenue | system | recognised on delivery |
-| `INVENTORY` | Asset | system | cost of unsold codes |
-| `COGS` | Expense | system | cost of delivered items |
-| `SUPPLIER_PAYABLE` / `SUPPLIER_PREPAID` | Liability / Asset | per supplier | **[OPEN]** |
-| `GATEWAY_FEES` | Expense | per gateway | |
-| `PROMO_CREDIT_EXPENSE`, `ADJUSTMENT` | Expense | system | goodwill/admin credits |
+All accounts are in Rial. "Normal side" is the side that increases the balance. `Owner` = one account per owner when set.
 
-### 9.3 Standard postings (amounts in minor units)
+| Code | Name | Type | Normal | Owner | Purpose |
+|---|---|---|---|---|---|
+| 1100 | `BANK_SETTLEMENT` | Asset | Debit | system | cash actually settled to the business bank account |
+| 1200 | `GATEWAY_RECEIVABLE` | Asset | Debit | per gateway | money captured by a gateway, not yet settled to the bank (**gateway receipts**) |
+| 1300 | `SUPPLIER_PREPAID` | Asset | Debit | per supplier | prepaid supplier balance (if that commercial model applies) |
+| 1400 | `INVENTORY_DIGITAL` | Asset | Debit | system | cost basis of unsold codes/accounts |
+| 2100 | `CUSTOMER_WALLET` | Liability | Credit | per user | **customer wallet liability** — what the store owes the customer; `min_balance = 0` |
+| 2200 | `CUSTOMER_PREPAYMENTS` | Liability | Credit | system | paid but not yet delivered (used only under recognition mode B) |
+| 2250 | `REFUNDS_PAYABLE` | Liability | Credit | per gateway | refund approved and owed back to a gateway/customer, not yet paid out |
+| 2300 | `SUPPLIER_PAYABLE` | Liability | Credit | per supplier | owed to supplier (if pay-later model) |
+| 2400 | `SUSPENSE_UNRESOLVED_RECEIPTS` | Liability | Credit | system | received money not yet attributable to a deliverable order (late payments, `NEEDS_REVIEW`); must trend to zero; aged-balance alert |
+| 2600 | `TAX_PAYABLE` | Liability | Credit | system | **reserved** — VAT/tax treatment undecided |
+| 3100 | `OWNER_EQUITY` | Equity | Credit | system | opening balances |
+| 4100 | `SALES_REVENUE` | Revenue | Credit | system | recognised sales |
+| 4200 | `SALES_REFUNDS` | Contra-revenue | Debit | system | refunds of already-recognised revenue |
+| 5100 | `COGS` | Expense | Debit | system | cost of delivered items |
+| 5200 | `GATEWAY_FEES` | Expense | Debit | per gateway | gateway commissions (recorded at settlement from gateway data; source of fee data unknown until a gateway is chosen) |
+| 5300 | `SUPPLIER_FEES` | Expense | Debit | per supplier | optional |
+| 5400 | `PROMO_CREDIT_EXPENSE` | Expense | Debit | system | goodwill / promotional wallet credits |
+| 5500 | `ADJUSTMENT_EXPENSE` | Expense | Debit | system | admin manual adjustments (reason + approval mandatory) |
+| 5600 | `CHARGEBACK_FRAUD_LOSS` | Expense | Debit | system | **reserved** |
 
-| Event | Debit | Credit |
+**Revenue recognition — two candidate modes, both representable with the accounts above; the choice is a configuration of the posting rules (`system_settings.accounting.revenue_recognition ∈ {ON_PAYMENT, ON_DELIVERY}`), not a schema difference.**
+- **Mode A — on payment:** payment posts straight to `SALES_REVENUE`.
+- **Mode B — on delivery:** payment posts to `CUSTOMER_PREPAYMENTS`; delivery moves it to `SALES_REVENUE`.
+*Working assumption for development only: Mode B.* It must be confirmed (or replaced) by an accountant, together with VAT treatment and the COGS method, **before launch**; the ledger is append-only, so the mode cannot be silently changed after real postings exist (a change needs an approved cut-over date). The same applies to the account list itself.
+
+### 9.3 Standard postings (amounts in Rial; `D` = debit, `C` = credit)
+
+| Event | Mode B (working assumption) | Mode A |
 |---|---|---|
-| Wallet top-up verified | GATEWAY_CLEARING | CUSTOMER_WALLET |
-| Order paid from wallet | CUSTOMER_WALLET | UNEARNED_REVENUE |
-| Order paid via gateway | GATEWAY_CLEARING | UNEARNED_REVENUE |
-| Item delivered | UNEARNED_REVENUE → | SALES_REVENUE ; and COGS ← INVENTORY |
-| Refund to wallet (pre-delivery) | UNEARNED_REVENUE | CUSTOMER_WALLET |
-| Refund to gateway | UNEARNED_REVENUE (or revenue reversal) | GATEWAY_CLEARING |
-| Admin credit/debit | ADJUSTMENT ↔ CUSTOMER_WALLET (needs reason + permission + audit) | |
+| Gateway wallet top-up verified | D `GATEWAY_RECEIVABLE` / C `CUSTOMER_WALLET` | same |
+| Order paid from wallet | D `CUSTOMER_WALLET` / C `CUSTOMER_PREPAYMENTS` | D `CUSTOMER_WALLET` / C `SALES_REVENUE` |
+| Order paid via gateway | D `GATEWAY_RECEIVABLE` / C `CUSTOMER_PREPAYMENTS` | D `GATEWAY_RECEIVABLE` / C `SALES_REVENUE` |
+| Item delivered (auto code, manual or supplier) | D `CUSTOMER_PREPAYMENTS` / C `SALES_REVENUE`; D `COGS` / C `INVENTORY_DIGITAL` (or `SUPPLIER_PREPAID/PAYABLE`) | D `COGS` / C inventory/supplier only |
+| Late / unattributable receipt | D `GATEWAY_RECEIVABLE` / C `SUSPENSE_UNRESOLVED_RECEIPTS`; later reclassified, refunded or re-attributed | same |
+| Refund to wallet, before delivery | D `CUSTOMER_PREPAYMENTS` (or `SUSPENSE…`) / C `CUSTOMER_WALLET` | D `SALES_REFUNDS` / C `CUSTOMER_WALLET` |
+| Refund to wallet, after delivery (policy-approved) | D `SALES_REFUNDS` / C `CUSTOMER_WALLET` (+ COGS decision: code not restocked ⇒ cost stays expensed) | same |
+| Refund to gateway approved | D `CUSTOMER_PREPAYMENTS`/`SALES_REFUNDS`/`SUSPENSE…` / C `REFUNDS_PAYABLE`; on gateway payout: D `REFUNDS_PAYABLE` / C `GATEWAY_RECEIVABLE` | analogous |
+| Gateway settles to bank | D `BANK_SETTLEMENT` + D `GATEWAY_FEES` / C `GATEWAY_RECEIVABLE` | same |
+| Admin credit to wallet | D `ADJUSTMENT_EXPENSE` (or `PROMO_CREDIT_EXPENSE`) / C `CUSTOMER_WALLET` | same |
+| Admin debit from wallet | D `CUSTOMER_WALLET` / C `ADJUSTMENT_EXPENSE` | same |
+| Reversal of any posting | new transaction with swapped sides and `reverses_id` | same |
 
-Discounts: the order `total` is already net; the discount lives in `order_discounts` for reporting. No ledger entry.
-Percentage rounding rule: `discount = floor(base * pct / 100)` using integer arithmetic (rounding favours the store by < 1 unit); capped by `max_discount`; unit-tested. **[OPEN: confirm]**
+Discounts: the order `total` is already net; the discount lives in `order_discounts` for reporting. No ledger entry in v1.
+Percentage rounding rule: `discount = floor(base * pct / 100)` in integer arithmetic, then floored to a multiple of 10 Rial; capped by `max_discount`; unit-tested. **[OPEN: confirm]**
 
 ### 9.4 Idempotency
-Every posting derives its `idempotency_key` from its business cause (`topup:<payment_id>`, `orderpay:<order_id>`, `refund:<refund_id>`). A duplicate callback attempts the same key → UNIQUE violation → treated as "already done". Combined with the idempotent payment state transition (§11), duplicate callbacks cannot double-credit **[VERIFIED at ledger level; end-to-end test pending in Phase 2]**.
+Every posting derives its `idempotency_key` from its business cause (`topup:<payment_id>`, `orderpay:<order_id>`, `refund:<refund_id>`). A duplicate callback attempts the same key → UNIQUE violation → treated as "already done". Combined with the idempotent payment state transition (§11), duplicate callbacks cannot double-credit. **[VERIFIED at SQL level: 100 parallel duplicate callbacks → exactly 1 settlement, 1 ledger transaction, wallet credited once; the full application path is tested in Phase 2.]**
 
 ## 10. Fulfillment & delivery
 
@@ -197,19 +245,32 @@ Every posting derives its `idempotency_key` from its business cause (`topup:<pay
 - `secret_access_log(secret_ref, actor, purpose, ip, created_at)` append-only.
 - Customer access: reveal endpoint authorises `order.user_id = session.user_id`; admins need `codes.reveal` and the access is logged.
 
+### 10.1 Delivery & disclosure tracking
+For every delivery the system records, in append-only fashion, *what was delivered and what was shown*:
+- `deliveries`: `delivered_at`, `delivery_kind`, `first_revealed_at`, `first_revealed_by_type ∈ CUSTOMER|ADMIN`, `last_revealed_at`, `reveal_count` (updated in the same transaction that appends to `secret_access_log`).
+- `secret_access_log(id, delivery_id/secret_ref, actor_type, actor_id, action ∈ REVEAL|ADMIN_REVEAL|EXPORT, ip, ua, created_at)` — append-only; written *before* plaintext is returned.
+- Derived **disclosure state** per order item: `NOT_DELIVERED` → `DELIVERED_UNREVEALED` → `REVEALED_BY_CUSTOMER` (or `REVEALED_BY_ADMIN_ONLY`). Limitation (documented): the server can only know that plaintext was *sent to a browser*, not whether the user copied or used the code.
+- A `SOLD` code never returns to `AVAILABLE`. After refund it can only become `VOID` (default) — restocking a delivered code is unsafe because the secret has left the system.
+
+### 10.2 Refund workflow for digital products (decision 9 — rules pending business + legal decision)
+- `refunds(id, order_id, payment_id, requested_by, reason_code, amount, destination ∈ WALLET|GATEWAY, status, policy_version, eligibility_snapshot jsonb, decided_by, decided_at, override_reason)` and `refund_items(refund_id, order_item_id, amount, disclosure_state_at_request)`; `refund_status_history`.
+- **Facts are captured, rules are configuration.** At request time the system snapshots each item's delivery/disclosure state (§10.1), fulfillment status, supplier-order status and payment/gateway refund capability into `eligibility_snapshot`. A versioned, configurable policy table maps `(product_type, disclosure_state, elapsed time)` → `AUTO_ALLOWED | REVIEW_REQUIRED | DENIED`.
+- **Launch default until the business/legal decision exists:** undelivered items → refundable (approval by permission holder); anything `DELIVERED_UNREVEALED`, `REVEALED_*`, or supplier-confirmed → `REVIEW_REQUIRED` (never automatic); overriding a `REVEALED` item needs permission `refunds.override_revealed` and a written reason, both audited. These are *safe placeholders*, not the final policy.
+- Refunds post to the ledger per §9.3 and change `payments.status` to `PARTIALLY_REFUNDED/REFUNDED`; they do not rewrite order history. Gateway refunds are used only if the chosen gateway supports them (unknown today); otherwise refunds default to wallet credit. **[OPEN B-refund, legal review]**
+
 ## 11. Payments
 
-- `payments(id uuid, purpose ORDER|WALLET_TOPUP, order_id/topup_id (exactly one, CHECK), gateway, gateway_ref/authority, amount, currency, status, created_at, verified_at)`; `UNIQUE(gateway, gateway_ref)`.
+- `payments(id uuid, purpose ORDER|WALLET_TOPUP, order_id/topup_id (exactly one, CHECK), gateway, gateway_ref, amount (Rial), currency='IRR', status, created_at, verified_at)`; `UNIQUE(gateway, gateway_ref)`.
 - `payment_events(id, payment_id, gateway, event_key, raw jsonb (redacted), received_at)` with `UNIQUE(gateway, event_key)` — every callback/webhook/verify response is logged once; dedupe by key (or by payload hash when the gateway has no event id).
 - **Browser redirect is only a trigger to run server-to-server verification**; payment becomes `SUCCEEDED` only from a verified gateway response whose `amount` and reference match `payments` (mismatch ⇒ `NEEDS_REVIEW`).
-- Success handler is one DB transaction: `payments → SUCCEEDED` (conditional UPDATE), ledger posting (idempotency key), `orders → PAID`, outbox event `order.paid`. The `WHERE status='VERIFYING'` conditional update means only one concurrent handler wins.
-- Gateway specifics (Zarinpal/IDPay/etc.): **not designed yet** — pending documentation and a decision. Adapter interface only (`PAYMENT_INTEGRATION.md`, later).
+- Success handler is one DB transaction: `payments → SUCCEEDED` (conditional UPDATE; only one concurrent handler wins), **reservation `ACTIVE → CONSUMED`** (if `LATE`, branch to the late-payment path §5.5: ledger → suspense, order `ON_HOLD`, nothing delivered), ledger posting (idempotency key), `orders → PAID`, outbox event `order.paid`.
+- **Gateway: not selected (decision D4).** Nothing gateway-specific is designed or assumed — no endpoints, signature scheme, refund capability or Rial/Toman semantics. Only a `PaymentGateway` port (see `ARCHITECTURE.md`) exists; `payments.gateway` is a free `text` key resolved through configuration. Amounts passed to any adapter are Rial (the native unit of Iranian gateways in general is to be confirmed from the chosen gateway's documentation).
 - Never store card data; only gateway reference, masked PAN if the gateway returns one, and amounts.
 
 ## 12. Suppliers
 
 - `suppliers(id, name, adapter_key, status, config jsonb (non-secret))`, `supplier_credentials(supplier_id, ciphertext, wrapped_dek, kek_version, rotated_at)`.
-- `supplier_products(supplier_id, external_sku, name, cost, currency, available, last_synced_at, raw_hash)`; `variant_supplier_routes(variant_id, supplier_product_id, priority, active)` allows multiple suppliers per variant with failover order.
+- `supplier_products(supplier_id, external_sku, name, cost (Rial), currency, available, last_synced_at, raw_hash)`; `variant_supplier_routes(variant_id, supplier_product_id, priority, active)` allows multiple suppliers per variant with failover order.
 - `supplier_orders(id, order_item_id, supplier_id, idempotency_key UNIQUE(supplier_id,key), status, request_redacted, response_redacted, external_ref, attempts, next_retry_at)` + `supplier_order_events`.
 - **Timeout ⇒ `UNKNOWN`, never auto-retry blindly.** A purchase request that timed out may have succeeded. UNKNOWN orders are resolved by status query (if the supplier offers one) or manual reconciliation; only then retried or failed. Marked `CONFIRMED` only on an explicit supplier confirmation.
 - Supplier API shapes, auth and capabilities: **unknown until docs are supplied**; nothing here assumes any.
@@ -243,18 +304,25 @@ Correctness tests (fast, deterministic, in CI) and stress tests (slow, separate 
 | C3 | Duplicate wallet top-up callback | correctness | credited once |
 | C4 | Duplicate supplier submission with same idempotency key | correctness | one supplier order |
 | C5 | Supplier failure | correctness | order not `COMPLETED`; task `FAILED`; fallback offered |
-| C6 | Reservation expiry vs concurrent payment | correctness | no double sale; late-payment policy applied |
+| C6 | Reservation expiry vs concurrent payment | correctness | no double sale; late payment → `ON_HOLD` + suspense posting, never delivered from lapsed reservation **(SQL-level guard [VERIFIED])** |
 | C7 | Direct SQL `UPDATE/DELETE` on ledger/movements | correctness | rejected |
-| C8 | Invalid status transition via raw SQL | correctness | rejected by trigger |
+| C8 | Invalid status transition via raw SQL | correctness | rejected by trigger (**pending**: generic transition-rule trigger not yet prototyped) |
+| C9 | SOLD code re-pointed to another order item / returned to AVAILABLE | correctness | rejected **[VERIFIED]** |
+| C10 | Late payment → admin re-reserve vs. concurrent buyers | correctness | delivery only from new CONSUMED reservation |
 | S1 | **1,000 concurrent purchase attempts vs 10 codes** through the real checkout→pay→deliver path | stress | ≤ 10 successful allocations, 0 duplicate codes, inventory never < 0, every order/payment/fulfillment in a consistent terminal state, ledger balanced, `available + reserved + sold = total` |
 | S2 | 500 concurrent wallet debits on one wallet | stress | never negative; sum of successes ≤ balance |
 
-Already proven at primitive level: S1's allocation core and ledger invariants (see `docs/db-prototypes/`).
+Proven at SQL-primitive level (40 checks, see `docs/db-prototypes/LAST_RUN.txt`): ledger invariants; S1 allocation core (1,000 attempts → exactly 10); S2 wallet floor (500 debits); counted-stock floor; duplicate callback and supplier-submission idempotency; late-payment delivery guard. **Not yet proven:** the application-level paths (C5, C10, S1 end-to-end, S2 via services), generic transition-rule triggers (C8).
 
 ## 17. Retention (proposal) **[OPEN: legal review]**
 - Financial/ledger/orders/payments: retain indefinitely (or per Iranian tax/accounting rules — to be confirmed).
 - Delivered secrets: encrypted payload kept for a customer-visible window (e.g. 12 months), then crypto-shredded (DEK destroyed) while the metadata/hash remain.
 - `payment_events` raw payloads: 24 months then redact. Audit logs: ≥ 24 months. Sessions: 30 days after expiry.
 
-## 18. ORM note
-Prisma can model tables/relations but **cannot express** CHECK constraints, partial indexes, triggers, deferred constraint triggers or `SKIP LOCKED` in its schema. Plan: Prisma (or Drizzle — see `TECH_STACK.md`) for types and ordinary queries; **hand-written SQL migrations** for constraints/triggers/functions; raw queries (`$queryRaw`) inside interactive transactions for reservation and ledger posting; CI check that fails if the live schema drifts from migrations.
+## 18. ORM: Drizzle (decision D2)
+Drizzle ORM is the data-access layer. PostgreSQL-specific features are **kept first-class**, not abstracted away:
+- **Schema & types** in Drizzle (`pgTable`, enums, indexes, and `check()` where expressible) for typed queries.
+- **Migrations are SQL files** under `db/migrations/`, reviewed by hand. Drizzle-generated SQL is accepted only after review; triggers, trigger functions, deferred constraint triggers, partial/expression indexes, grants and `CHECK`s that Drizzle cannot express are written as **custom SQL migrations** (drizzle-kit supports custom migrations — to be confirmed at scaffold time against the installed version).
+- **`SELECT … FOR UPDATE SKIP LOCKED`** and the reservation/ledger functions are called via Drizzle's `sql` template (parameterised) inside `db.transaction(...)`; whether the query builder's locking clause is used directly is verified at scaffold time. The tested SQL in `docs/db-prototypes/` is the reference.
+- CI job: apply all migrations to a clean PostgreSQL, run the SQL test suite (this prototype suite grows into it), and fail if the Drizzle schema and the migrated database drift.
+- The application DB role is non-owner with DML-only grants (no UPDATE/DELETE on append-only tables).

@@ -1,0 +1,50 @@
+Run date: 2026-11-01 | PostgreSQL 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
+schema loaded
+== LEDGER ==
+  PASS  balanced multi-row posting accepted
+  PASS  unbalanced transaction rejected at COMMIT
+  PASS  wallet overdraft rejected by balance floor
+  PASS  duplicate posting (same idempotency key) rejected
+  PASS  ledger_entries UPDATE blocked
+  PASS  ledger_entries DELETE blocked
+  PASS  ledger_entries TRUNCATE blocked
+  PASS  ledger_transactions UPDATE blocked
+  PASS  late entry into a committed transaction rejected
+  PASS  zero/negative amount rejected
+  PASS  wallet projection after top-up (=1000000)
+  PASS  projection equals recomputation from entries (=1000000)
+== IDEMPOTENCY ==
+  PASS  100 parallel duplicate callbacks -> exactly 1 settlement (=1)
+  PASS  exactly 1 ledger transaction for the payment (=1)
+  PASS  wallet credited once (1,000,000 + 500,000) (=1500000)
+  PASS  sequential replay returns ALREADY_PROCESSED (=ALREADY_PROCESSED)
+  PASS  50 parallel supplier submissions with same key -> 1 supplier order (=1)
+  PASS  supplier_orders rows (=1)
+== WALLET CONCURRENCY (S2) ==
+  PASS  500 parallel debits -> exactly floor(balance/amount) succeed (=150)
+  PASS  wallet drained to exactly 0, never negative (=0)
+  PASS  no account below its floor (=0)
+== INVENTORY: 1,000 attempts vs 10 codes (S1 core) ==
+  PASS  successful reservations out of 1000 attempts (=10)
+  PASS  codes in RESERVED (=10)
+  PASS  every reservation holds exactly one code (no code shared) (=0)
+  PASS  available stock exhausted, never negative (=0)
+  PASS  failed attempts left no orphan reservations (rolled back) (=10)
+  PASS  duplicate code hash rejected (global UNIQUE)
+  PASS  RESERVED code cannot become SOLD without a CONSUMED reservation
+  PASS  inconsistent status/link combination rejected by CHECK
+== LATE PAYMENT / EXPIRED RESERVATION ==
+  PASS  payment verified after TTL -> LATE (not consumed) (=LATE)
+  PASS  sweeper releases the expired code (=1)
+  PASS  released code re-reserved by a different order (=1002)
+  PASS  late order cannot take the code now held by another order's reservation
+  PASS  late reservation stays unconsumable (=LATE)
+  PASS  on-time order: consume then SOLD succeeds
+  PASS  SOLD code cannot be reassigned to another order item
+== COUNTED STOCK ==
+  PASS  counted stock: successful reservations out of 1000 attempts (=10)
+  PASS  counted stock: 1000 attempts reserve exactly 10 (=10)
+  PASS  counted stock: available never negative (=0)
+  PASS  negative stock rejected by CHECK
+
+RESULT: 40 passed, 0 failed

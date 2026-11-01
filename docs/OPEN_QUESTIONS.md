@@ -1,52 +1,58 @@
 # OPEN_QUESTIONS.md
 
-**Blocking for Phase 2 start (D1–D8)** · others can be answered later. Each lists my recommendation.
+Status v0.2. Decisions already made live in `DECISIONS.md` and are **not** repeated as questions. Only unresolved items remain here, with my recommendation.
 
-## Blocking
+## Previously open, now RESOLVED (see DECISIONS.md)
+D1 money unit (Rial) · D2 ORM (Drizzle) · D3 login (mobile OTP; email attachable) · D4 gateway (not selected, adapter only) · D5 fulfillment scope · D6 split payment (none) · D7 Docker/Redis (none).
+
+## Blocking before Phase 2 can start
 | ID | Question | Recommendation |
 |---|---|---|
-| D1 | **Money base unit:** store Toman or Rial? (Gateways commonly operate in Rial; UI shows Toman.) | Store **Toman (IRT)** as integer if you never need sub-toman amounts; convert ×10 only inside gateway adapters. Confirm with chosen gateway. |
-| D2 | **Payment gateway(s)** for launch, and do you already have merchant approval/credentials/docs? | Pick one; share docs. Adapter stays gateway-agnostic until then. |
-| D3 | **Login method:** phone+OTP, email+password, or both? SMS provider? | Phone+OTP primary (local norm) with optional password; needs an SMS provider and cost caps. |
-| D4 | **Suppliers:** which, and do you have API docs? Prepaid balance or pay-on-delivery with them? | Launch with auto-code from own stock + manual fulfillment; add supplier API once docs exist. Affects accounts `SUPPLIER_PREPAID/PAYABLE`. |
-| D5 | **Late payment policy** (gateway success after reservation expiry, no stock left): auto-credit to wallet vs auto-refund to card vs hold for review? | Re-try reserve; else credit wallet automatically + notify; manual review above a threshold. |
-| D6 | **Refund policy** for digital goods, esp. revealed/delivered codes and accounts. | No refund after reveal except admin override with permission; undelivered always refundable. |
-| D7 | **Split payment** (wallet + gateway) in v1? | No — all-wallet or all-gateway in v1 (simpler, safer). |
-| D8 | **Hosting & ops:** where is it deployed (domestic VPS?), who holds KEK backups, managed Postgres? | Domestic VPS, self-managed PG with PITR, KEK split custody. |
+| D8 | **Hosting/VPS provider and KEK custody method** (needs review + approval). Who holds the KEK backup shares? Managed or self-managed PostgreSQL with PITR? | Domestic VPS, self-managed PG with WAL archiving; KEK as root-only file + offline split backup with named custodians; run a recovery drill before launch. Scaffold (2a) can start without this, but **no real secrets/inventory** may be loaded before it is settled. |
+| D9 | **Late-payment automation:** keep v1 as *manual review for every late payment* (current design) — confirm; grace window length for `VERIFYING` (proposal +5 min); hold-age alert threshold (proposal 30 min). | Manual-only in v1, flag `late_payment.auto_rereserve=false`. |
+| D10 | **Accountant review** of Chart of Accounts (DATABASE_DESIGN §9.2): revenue recognition (on payment vs on delivery), VAT, COGS method, treatment of gateway fees/settlement. | Needed before launch; development proceeds on Mode B as an explicitly provisional assumption. |
 
-## Product / business
+## Business / product
 | ID | Question | Note |
 |---|---|---|
-| B1 | Which gift-card brands, regions and denominations at launch? | seeds catalog + attribute schemas |
-| B2 | Are game accounts pre-loaded stock or created per order? | pre-loaded → `digital_codes(ACCOUNT)`; per-order → manual task |
-| B3 | Reservation TTL (default 15 min) and cart expiry? | |
-| B4 | Discount stacking policy (proposal in DB design §13) acceptable? | |
-| B5 | Wallet rules: top-up min/max, wallet balance withdrawable? (assume **no** cash-out) | cash-out would have major legal implications |
-| B6 | Ticket reopen window, SLA targets, attachment size/type limits? | |
-| B7 | Should delivery show the code on-site only, or also SMS/email it? | recommend on-site only + "ready" notification |
-| B8 | Per-order and new-account spend caps, velocity thresholds? | fraud defaults in SECURITY §11 |
-| B9 | Accounting: revenue recognised at payment or delivery; VAT handling; chart of accounts review by accountant? | DB design §9.2 assumes delivery |
-| B10 | Need 4-eyes approval for ledger adjustments / refunds above X? | |
-| B11 | Admin roles list (support, content, finance, super-admin …)? | |
+| B1 | Launch catalog: brands, regions, denominations, fulfillment method per variant. | seeds catalog + attribute schemas |
+| B2 | Game accounts: pre-loaded stock (→ `digital_codes(ACCOUNT)`) or created per order (→ manual task)? Account-sharing/ToS risk acceptance? | |
+| B3 | Reservation TTL (default 15 min) and cart expiry. | |
+| B4 | Discount stacking policy (DATABASE_DESIGN §13 proposal). | |
+| B5 | Wallet rules: top-up min/max; confirm **no cash-out** (cash-out has major legal/AML implications). | |
+| B6 | Ticket reopen window, SLA, attachment limits. | |
+| B7 | Show delivered secrets on-site only (recommended) or also by SMS/email? | |
+| B8 | Per-order / new-account spend caps and velocity thresholds. | SECURITY §11 |
+| B10 | Four-eyes approval thresholds for ledger adjustments / refunds. | |
+| B11 | Admin roles and permission matrix. | |
+| B12 | **Refund rules** per product type and disclosure state (not delivered / delivered-unrevealed / revealed), time windows, who may override. **Requires business decision + legal review.** Current design only records the facts and uses safe placeholders. | DATABASE_DESIGN §10.2 |
+| B13 | Is a refund to the original gateway required, or is wallet-credit refund acceptable? | depends on gateway capability (unknown) |
 
-## Technical
-| ID | Question | Note |
+## External dependencies (blocked until the owner provides them)
+| ID | Needed | Unblocks |
 |---|---|---|
-| T1 | Prisma vs Drizzle (TECH_STACK) | |
-| T2 | PostgreSQL version available in production (uuidv7 native needs 18) | |
-| T3 | Postgres RLS as extra layer for customer data? | |
-| T4 | Hash-chained audit log needed? | |
-| T5 | Error monitoring: Sentry SaaS/self-hosted/none? | reachability from Iran |
-| T6 | Object storage: local disk vs MinIO | |
-| T7 | Domain/brand name and language scope (Persian only at launch, English later?) | |
+| X1 | Payment gateway choice + merchant approval + official documentation + sandbox credentials | real `PaymentGateway` adapter, `PAYMENT_INTEGRATION.md` |
+| X2 | SMS provider choice + docs/credentials | real `SmsProvider`, production OTP |
+| X3 | Supplier(s) + authoritative API documentation | real `SupplierAdapter`, `SUPPLIER_INTEGRATION.md` |
 
-## Legal / compliance (owner + local counsel; no conclusions here)
-See `SECURITY.md §12`: sanctions & publisher ToS for selling foreign gaming products to Iran, business licensing / e-Namad, gateway onboarding requirements and permitted categories, tax/VAT, consumer-protection terms, data protection, SMS regulations, account-sharing risks.
+## Technical (low-risk, decided at scaffold time)
+| ID | Question |
+|---|---|
+| T2 | Production PostgreSQL version (native `uuidv7()` needs 18; otherwise app-generated). |
+| T3 | PostgreSQL RLS for customer-owned data as defence in depth? |
+| T4 | Hash-chained audit log? |
+| T5 | Error monitoring: Sentry SaaS / self-hosted / none (reachability from Iran). |
+| T6 | Object storage: local disk behind interface vs self-hosted MinIO. |
+| T7 | Custom OTP module vs Auth.js credentials flow (leaning custom). |
+| T8 | Verify at scaffold: drizzle-kit custom migrations, `skip locked` in the query builder, schema-drift check. |
+
+## Legal / compliance (owner + local counsel; no conclusions in these docs)
+See `SECURITY.md §12`: sanctions and publisher ToS for foreign gaming products, business licensing / e-Namad, gateway onboarding rules and allowed categories, tax/VAT, consumer-protection and refund terms for digital goods, data protection, SMS regulations, account-sharing risks.
 
 ## Design
 | ID | Question |
 |---|---|
-| G1 | Please provide source code for design references #1–#3 and the three pending ones (#4 Spotlight Card, #5 Display Cards, #6 Sidebar+Dashboard). |
-| G2 | Licence status of Soda/GetLayers (free vs paid)? |
-| G3 | Does #6 serve admin, customer dashboard, or both? |
-| G4 | Brand identity: logo, name, tone of voice (Persian copy)? |
+| G1 | Provide the actual source for references #1–#3 and the three pending ones (#4–#6) — see `DESIGN_REFERENCES.md` for exactly what I have and lack. |
+| G2 | Licence status of Soda/GetLayers and of each 21st.dev/Aceternity component. |
+| G3 | Does #6 (Sidebar + Dashboard) serve admin, customer dashboard, or both? |
+| G4 | Brand name/logo/tone of voice (Persian copy). |

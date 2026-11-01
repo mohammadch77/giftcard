@@ -16,15 +16,18 @@ Catalog & variants · three fulfillment methods (auto code / manual / supplier A
 3. Maintainable modular architecture.
 4. Premium UX/visual design (deferred to Phase 5 pending six design references).
 
+## Decisions
+See `DECISIONS.md` (Rial storage / Toman display, Drizzle, mobile OTP, adapters without a chosen gateway/SMS/supplier, no split payment, no Docker/Redis).
+
 ## Current status (2026-11-01)
 | Item | State |
 |---|---|
 | Repository | empty — no commits, no files, no framework |
 | Phase 0 (discovery) | done — see below |
-| Phase 1 (architecture + DB design) | started — drafts in this folder, **awaiting review** |
+| Phase 1 (architecture + DB design) | v0.2 — decisions D1–D7 applied; prototypes re-run (see `db-prototypes/LAST_RUN.txt`); **awaiting approval** |
 | Application code | none (intentionally) |
-| Design references | 3 of 6 named; **component source code not yet available in the repo** |
-| Payment gateway | not selected |
+| Design references | 3 named+described, 3 pending; **no source code available to me for any of them** (details in DESIGN_REFERENCES) |
+| Payment gateway / SMS provider | not selected |
 | Suppliers | none selected; no API docs |
 
 ## Phase 0 repository audit
@@ -40,4 +43,5 @@ Catalog & variants · three fulfillment methods (auto code / manual / supplier A
 | STATE_MACHINES | drafted |
 | TECH_STACK, DESIGN_REFERENCES, IMPLEMENTATION_ROADMAP, OPEN_QUESTIONS | drafted |
 | PRODUCT_REQUIREMENTS, PAYMENT_INTEGRATION, SUPPLIER_INTEGRATION, FULFILLMENT_DESIGN, DESIGN_SYSTEM, TESTING_STRATEGY | **intentionally not written yet** (depend on decisions/docs not yet provided; avoiding superficial text) |
-| `db-prototypes/` | executable SQL prototypes + test script |
+| DECISIONS | new — owner decisions log |
+| `db-prototypes/` | executable SQL prototypes (001 ledger, 002 inventory, 003 orders/payments/reservations) + test script + `LAST_RUN.txt` |

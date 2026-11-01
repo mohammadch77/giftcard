@@ -11,7 +11,7 @@ CREATE TABLE ledger_accounts (
   owner_id      text,
   type          account_type NOT NULL,
   normal_side   entry_side NOT NULL,           -- side that increases the balance
-  currency      char(3) NOT NULL DEFAULT 'IRT',
+  currency      char(3) NOT NULL DEFAULT 'IRR' CHECK (currency = 'IRR'),  -- amounts are integer RIAL
   min_balance   bigint,                        -- NULL = may go negative; 0 = never below zero
   created_at    timestamptz NOT NULL DEFAULT now(),
   UNIQUE (code, owner_type, owner_id, currency)
@@ -100,3 +100,18 @@ CREATE TRIGGER ledger_txn_ro BEFORE UPDATE OR DELETE ON ledger_transactions
   FOR EACH ROW EXECUTE FUNCTION trg_append_only();
 CREATE TRIGGER ledger_entries_trunc BEFORE TRUNCATE ON ledger_entries
   FOR EACH STATEMENT EXECUTE FUNCTION trg_append_only();
+
+-- Typed helper for the common two-leg posting. Explicit parameter types remove any
+-- untyped-literal ambiguity (enum columns are never fed from bare string literals in UNIONs).
+CREATE FUNCTION ledger_post2(p_kind text, p_key text, p_ref_type text, p_ref_id text,
+                             p_debit_account bigint, p_credit_account bigint, p_amount bigint)
+RETURNS bigint AS $$
+DECLARE tid bigint;
+BEGIN
+  INSERT INTO ledger_transactions (kind, idempotency_key, reference_type, reference_id)
+  VALUES (p_kind, p_key, p_ref_type, p_ref_id) RETURNING id INTO tid;
+  INSERT INTO ledger_entries (transaction_id, account_id, side, amount) VALUES
+    (tid, p_debit_account,  'DEBIT'::entry_side,  p_amount),
+    (tid, p_credit_account, 'CREDIT'::entry_side, p_amount);
+  RETURN tid;
+END $$ LANGUAGE plpgsql;
