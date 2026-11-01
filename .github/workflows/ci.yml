@@ -1,0 +1,33 @@
+name: ci
+on:
+  push:
+  pull_request:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: ci_only_password
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:ci_only_password@localhost:5432/giftcard_ci
+      TEST_DATABASE_ADMIN_URL: postgresql://postgres:ci_only_password@localhost:5432/postgres
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: ci_only_password
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version-file: .nvmrc, cache: npm }
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run arch
+      - run: npm run test:unit
+      - run: npm run test:db
+      - run: npm run db:drift
+      - run: npm run test:sql-prototypes

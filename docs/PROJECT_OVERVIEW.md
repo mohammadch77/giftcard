@@ -22,10 +22,10 @@ See `DECISIONS.md` (Rial storage / Toman display, Drizzle, mobile OTP, adapters 
 ## Current status (2026-11-01)
 | Item | State |
 |---|---|
-| Repository | empty — no commits, no files, no framework |
+| Repository | Phase 0 audit: was empty. Now: Phase 2a scaffold (Next.js 16, TS 6, Drizzle) — see PHASE_2A_NOTES.md |
 | Phase 0 (discovery) | done — see below |
 | Phase 1 (architecture + DB design) | v0.2 — decisions D1–D7 applied; prototypes re-run (see `db-prototypes/LAST_RUN.txt`); **awaiting approval** |
-| Application code | none (intentionally) |
+| Application code | Phase 2a scaffold only (structure, config, DB tooling, tests); **no business logic** |
 | Design references | 3 named+described, 3 pending; **no source code available to me for any of them** (details in DESIGN_REFERENCES) |
 | Payment gateway / SMS provider | not selected |
 | Suppliers | none selected; no API docs |

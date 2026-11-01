@@ -1,6 +1,6 @@
 # ARCHITECTURE.md
 
-Status: **DRAFT v0.2 — Phase 1, updated with decisions D1–D7 (`DECISIONS.md`).** Repository state at time of writing: **empty (no commits, no files)**, so this is a greenfield proposal, not an adaptation of existing code.
+Status: **v0.3 — Phase 2a scaffold implemented (structure only); decisions D1–D7 + 2026-11-01 decisions in `DECISIONS.md`.** Repository state at time of writing: **empty (no commits, no files)**, so this is a greenfield proposal, not an adaptation of existing code.
 
 ## 1. Style: modular monolith — verdict
 Suitable. One deployable Next.js app + one worker process from the **same codebase and database**. No microservices, no message broker. Justification: single team, single vendor, strong transactional needs (order+payment+ledger+inventory in one DB transaction) which a distributed design would make harder, not easier.
@@ -45,8 +45,8 @@ src/
   worker/                    # worker entrypoint + job registry
   ui/                        # presentational components, design system (no domain logic)
 db/
-  schema/                    # Drizzle table definitions (typed access)
   migrations/                # reviewed SQL: drizzle-generated + custom (CHECKs, triggers, functions, grants)
+                             # platform tables: src/platform/db/schema/; module tables: src/modules/<m>/infra/schema.ts
   seed/
 tests/ (unit, integration, concurrency, e2e)
 docs/
@@ -57,7 +57,7 @@ docs/
 2. `app/` and `ui/` never import `infra/` or SQL; they call use cases.
 3. `ui/` components receive data via props; no DB, no fetch of domain data inside presentational components.
 4. Cross-module *writes* happen either (a) via the other module's use case inside the **same transaction** passed in, or (b) asynchronously via outbox events. No module touches another module's tables.
-5. Dependency direction (allowed →): `orders → {cart, pricing, inventory, payments, fulfillment, promotions}`; `payments → {ledger, orders-events}`; `fulfillment → {inventory, suppliers, orders-events}`; `wallet → ledger`. `ledger`, `audit`, `platform` depend on nothing in the domain. Cycles are lint errors.
+5. Dependency direction is the machine-enforced matrix in `architecture/module-deps.cjs` (single source of truth for `.dependency-cruiser.cjs` and the tests). Notable: `ledger` and `audit` import no other module; `payments → {ledger, audit}` (it never imports `orders`; payment results reach orders via outbox events — this resolves the earlier `payments ↔ orders` cycle risk); `wallet → {ledger, payments, audit}`; `fulfillment → {inventory, suppliers, ledger, catalog, audit}`; `orders` is the orchestrating module with the widest list; `support → {identity, orders, notifications, audit}`. `platform` imports no module; `ui` imports no module/DB/config; `app` never touches `platform/db`. Cycles are errors. **Table ownership:** each module's Drizzle tables live in its private `infra/schema.ts`; other modules cannot import them (they go through the owner's `index.ts`). Changing the matrix requires an architecture review (it is a test-covered file).
 
 ## 4. Transaction & unit-of-work pattern
 - `withTransaction(async tx => …)` in `platform/db` (isolation `READ COMMITTED` default; `SERIALIZABLE` not required because correctness relies on row locks, unique constraints and conditional updates, which are simpler to reason about and test).

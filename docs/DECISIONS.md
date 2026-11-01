@@ -22,3 +22,13 @@ Authoritative log of decisions made by the project owner. Other docs must agree 
 
 ## Process directives
 11–14: fix test script typing issue, re-run all prototypes/tests and report separately; reconcile design-reference status; align docs; **no scaffold/implementation yet.** Results: `db-prototypes/LAST_RUN.txt`, `DESIGN_REFERENCES.md`.
+
+## Decisions of 2026-11-01 (second review) and Phase 2a authorisation
+| ID | Decision | Applied in |
+|---|---|---|
+| E1 | Late payments in v1 are **manual review and settlement only**. | DATABASE_DESIGN §5.5 |
+| E2 | A **5-minute** payment-verification grace window is the initial, configurable value (`PAYMENT_VERIFY_GRACE_SECONDS`). It never allows using an expired reservation or delivering without a new reservation. | DATABASE_DESIGN §5.5; `src/platform/config/env.ts` |
+| E3 | VPS choice and final KEK custody method stay **open**; the architecture must still allow secure key management and recovery. | OPEN_QUESTIONS D8; SECURITY §2.1 |
+| E4 | Chart of Accounts and revenue-recognition timing stay **proposed** until an accountant approves before launch. Revenue-recognition mode must **not** become a freely editable admin-panel setting. | DATABASE_DESIGN §9.2 |
+| E5 | Current refund policy is **temporary**; final policy needs legal review. | DATABASE_DESIGN §10.2; OPEN_QUESTIONS B12 |
+| E6 | **Phase 2a authorised** (scaffold, Drizzle, migrations + runner, DB test harness, dependency-cruiser, module structure, env validation, lint/typecheck/tests). No business features, no real providers, no secrets, no prototype migrations promoted without review, no UI design. | PHASE_2A_NOTES.md |

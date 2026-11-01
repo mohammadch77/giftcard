@@ -3,14 +3,13 @@
 Status v0.2. Decisions already made live in `DECISIONS.md` and are **not** repeated as questions. Only unresolved items remain here, with my recommendation.
 
 ## Previously open, now RESOLVED (see DECISIONS.md)
-D1 money unit (Rial) · D2 ORM (Drizzle) · D3 login (mobile OTP; email attachable) · D4 gateway (not selected, adapter only) · D5 fulfillment scope · D6 split payment (none) · D7 Docker/Redis (none).
+D1 money unit (Rial) · D2 ORM (Drizzle) · D3 login (mobile OTP; email attachable) · D4 gateway (not selected, adapter only) · D5 fulfillment scope · D6 split payment (none) · D7 Docker/Redis (none) · **D9 (2026-11-01): late payments are manual-review only in v1; verification grace = 5 min initial, configurable, never permits expired-reservation use.**
 
 ## Blocking before Phase 2 can start
 | ID | Question | Recommendation |
 |---|---|---|
-| D8 | **Hosting/VPS provider and KEK custody method** (needs review + approval). Who holds the KEK backup shares? Managed or self-managed PostgreSQL with PITR? | Domestic VPS, self-managed PG with WAL archiving; KEK as root-only file + offline split backup with named custodians; run a recovery drill before launch. Scaffold (2a) can start without this, but **no real secrets/inventory** may be loaded before it is settled. |
-| D9 | **Late-payment automation:** keep v1 as *manual review for every late payment* (current design) — confirm; grace window length for `VERIFYING` (proposal +5 min); hold-age alert threshold (proposal 30 min). | Manual-only in v1, flag `late_payment.auto_rereserve=false`. |
-| D10 | **Accountant review** of Chart of Accounts (DATABASE_DESIGN §9.2): revenue recognition (on payment vs on delivery), VAT, COGS method, treatment of gateway fees/settlement. | Needed before launch; development proceeds on Mode B as an explicitly provisional assumption. |
+| D8 | **Hosting/VPS provider and KEK custody method — remains OPEN (confirmed 2026-11-01); the architecture must keep secure key management and recovery possible (`KeyProvider` port, versioned KEK, rotation, tested recovery).** Who holds the KEK backup shares? Managed or self-managed PostgreSQL with PITR? | Domestic VPS, self-managed PG with WAL archiving; KEK as root-only file + offline split backup with named custodians; run a recovery drill before launch. Scaffold (2a) can start without this, but **no real secrets/inventory** may be loaded before it is settled. |
+| D10 | **Accountant review (pre-launch gate; decision 2026-11-01: stays PROPOSED, revenue-recognition mode is NOT an admin-panel setting)** of Chart of Accounts (DATABASE_DESIGN §9.2): revenue recognition (on payment vs on delivery), VAT, COGS method, treatment of gateway fees/settlement. | Needed before launch; development proceeds on Mode B as an explicitly provisional assumption. |
 
 ## Business / product
 | ID | Question | Note |
@@ -25,7 +24,7 @@ D1 money unit (Rial) · D2 ORM (Drizzle) · D3 login (mobile OTP; email attachab
 | B8 | Per-order / new-account spend caps and velocity thresholds. | SECURITY §11 |
 | B10 | Four-eyes approval thresholds for ledger adjustments / refunds. | |
 | B11 | Admin roles and permission matrix. | |
-| B12 | **Refund rules** per product type and disclosure state (not delivered / delivered-unrevealed / revealed), time windows, who may override. **Requires business decision + legal review.** Current design only records the facts and uses safe placeholders. | DATABASE_DESIGN §10.2 |
+| B12 | **Refund rules (current policy is TEMPORARY; legal review required before it is final)** per product type and disclosure state (not delivered / delivered-unrevealed / revealed), time windows, who may override. **Requires business decision + legal review.** Current design only records the facts and uses safe placeholders. | DATABASE_DESIGN §10.2 |
 | B13 | Is a refund to the original gateway required, or is wallet-credit refund acceptable? | depends on gateway capability (unknown) |
 
 ## External dependencies (blocked until the owner provides them)
@@ -44,7 +43,7 @@ D1 money unit (Rial) · D2 ORM (Drizzle) · D3 login (mobile OTP; email attachab
 | T5 | Error monitoring: Sentry SaaS / self-hosted / none (reachability from Iran). |
 | T6 | Object storage: local disk behind interface vs self-hosted MinIO. |
 | T7 | Custom OTP module vs Auth.js credentials flow (leaning custom). |
-| T8 | Verify at scaffold: drizzle-kit custom migrations, `skip locked` in the query builder, schema-drift check. |
+| T8 | ~~Verify at scaffold~~ **DONE in Phase 2a** (see TECH_STACK): custom migrations, `skip locked`, CHECK, drift check verified. |
 
 ## Legal / compliance (owner + local counsel; no conclusions in these docs)
 See `SECURITY.md §12`: sanctions and publisher ToS for foreign gaming products, business licensing / e-Namad, gateway onboarding rules and allowed categories, tax/VAT, consumer-protection and refund terms for digital goods, data protection, SMS regulations, account-sharing risks.

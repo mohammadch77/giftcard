@@ -1,0 +1,49 @@
+{
+  "name": "giftcard-store",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Digital gaming & subscription store (Iran market) — modular monolith. See docs/.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "worker": "tsx --env-file-if-exists=.env src/worker/index.ts",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "arch": "depcruise src --config .dependency-cruiser.cjs",
+    "db:generate": "drizzle-kit generate",
+    "db:generate:custom": "drizzle-kit generate --custom",
+    "db:migrate": "tsx --env-file-if-exists=.env scripts/migrate.ts",
+    "db:drift": "tsx scripts/check-drift.ts",
+    "test": "npm run test:unit && npm run test:db",
+    "test:unit": "vitest run --project unit",
+    "test:db": "vitest run --project db",
+    "test:sql-prototypes": "bash docs/db-prototypes/test_prototypes.sh",
+    "check": "npm run lint && npm run typecheck && npm run arch && npm run test"
+  },
+  "dependencies": {
+    "drizzle-orm": "0.45.4",
+    "next": "16.4.3",
+    "pg": "8.23.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "@types/pg": "8.23.1",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "dependency-cruiser": "18.7.0",
+    "drizzle-kit": "0.31.11",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.4.3",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.1",
+    "vitest": "5.0.5"
+  }
+}

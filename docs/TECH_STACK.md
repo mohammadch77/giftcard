@@ -1,6 +1,21 @@
 # TECH_STACK.md
 
-Status: **PROPOSAL, with decided items marked.** Repository is empty, so nothing is installed and nothing conflicts. No dependencies have been installed in this phase.
+Status: **v0.3 — Phase 2a installed.** Exact pinned versions (all verified installable on 2026-11-01):
+
+| Package | Version | Note |
+|---|---|---|
+| next / react / react-dom | 16.4.3 / 19.3.1 / 19.3.1 | App Router, `output: 'standalone'` |
+| typescript | **6.0.3** | deliberately NOT 7.0.2 (npm `latest`): typescript-eslint 8.72.1 declares `typescript <6.1.0`. Revisit when tooling supports TS 7 |
+| eslint / eslint-config-next / typescript-eslint | 9.39.5 / 16.4.3 / 8.72.1 | eslint 10 not used: Next's plugin set targets ≥9, 9.x is the safe line |
+| drizzle-orm / drizzle-kit | 0.45.4 / 0.31.11 | |
+| pg / @types/pg | 8.23.1 | node-postgres |
+| zod | 4.6.7 | |
+| vitest | 5.0.5 | real PostgreSQL for DB tests |
+| dependency-cruiser | 18.7.0 | module boundaries |
+| tsx | 4.23.15 | scripts / worker |
+| @types/node | 22.20.5 | matches Node 22 |
+
+Not installed on purpose: Tailwind, shadcn, Radix, Lucide, Framer Motion (UI phases), argon2 (passwords not primary), pino, any provider SDK. `npm audit` reports 2 moderate **dev-tooling** findings (drizzle-kit's legacy `@esbuild-kit` esbuild dev-server issue; `minimatch` ReDoS in lint tooling); the suggested `--force` fixes are major downgrades and were NOT applied — see PHASE_2A_NOTES.md.
 
 ## Recommended stack
 | Concern | Choice | Why / note |
@@ -26,7 +41,7 @@ Status: **PROPOSAL, with decided items marked.** Repository is empty, so nothing
 ## Drizzle usage rules (decision D2)
 - Drizzle owns typed schema + queries; **SQL stays first-class.** Migrations are plain `.sql` files, reviewed; anything Drizzle cannot express (triggers, trigger functions, deferred constraint triggers, partial/expression indexes, grants, some CHECKs) is a hand-written custom migration.
 - Critical statements (`SELECT … FOR UPDATE SKIP LOCKED` reservation, ledger posting, conditional status transitions) are written as parameterised SQL (Drizzle `sql` template or DB functions) inside `db.transaction`; reference implementations: `docs/db-prototypes/*.sql`.
-- Items to **verify when scaffolding** (not assumed now): drizzle-kit custom-migration workflow, whether the query-builder's locking clause supports `skip locked` in the installed version, enum/check support level, and how to wire the schema-drift CI check.
+- Verified in Phase 2a (drizzle-orm 0.45.4 / kit 0.31.11): `drizzle-kit generate --custom` produces an empty SQL migration that the migrator applies (`--> statement-breakpoint` separates statements; `$fn$` function bodies work); `check()` is expressible and emitted as a real CHECK; the query builder supports `.for('update', { skipLocked: true })` (tested against PostgreSQL, including a two-transaction skip test); the drift guard `npm run db:drift` fails when the schema changes without a migration. Not yet verified: partial/expression indexes via the schema API (to be hand-written in custom SQL if awkward), PG enums, grants.
 - Money columns are `bigint` mapped to a branded `Rial` type (bigint-safe; avoid JS `number` above 2^53 — Rial totals stay far below, but the type prevents unit mixups).
 
 ## Dependencies: required now vs later

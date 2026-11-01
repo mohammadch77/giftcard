@@ -6,7 +6,7 @@ Status: DRAFT v0.2 (reflects decisions D1–D7). Each phase ends with a review g
 |---|---|---|
 | **0 Discovery** | repo audit | ✅ done (repo empty) |
 | **1 Architecture & DB design** | DATABASE_DESIGN, ARCHITECTURE, SECURITY, STATE_MACHINES, prototypes, DECISIONS | 🟡 v0.2 drafted after decisions D1–D7; **awaiting your approval**; remaining blockers: D8 (hosting/KEK), D9, D10 |
-| **2a Foundation** | scaffold Next.js/TS, lint + boundary rules, config validation, **Drizzle + SQL-migration workflow (verify custom migrations, `skip locked`, drift check)**, test harness against real Postgres; the prototype SQL suite is ported into it | CI green; empty app boots; migrations apply to clean DB |
+| **2a Foundation** ✅ implemented, awaiting review (see PHASE_2A_NOTES.md) | scaffold Next.js/TS, lint + boundary rules, config validation, **Drizzle + SQL-migration workflow (verify custom migrations, `skip locked`, drift check)**, test harness against real Postgres; the prototype SQL suite is ported into it | CI green; empty app boots; migrations apply to clean DB |
 | **2b Core data layer** | SQL migrations for identity, catalog, inventory, ledger, orders, payments, platform tables; triggers; transition rules | SQL-level tests (C7, C8) pass; schema drift check |
 | **2c Ledger + wallet** | ledger service, `platform/money` (Rial↔Toman), wallet top-up/debit (using `TestGateway`), reconciliation job | ledger tests + S2 stress pass |
 | **2d Inventory + auto-code fulfillment** | encrypted code import, reservation, expiry sweeper, delivery gate | C1, C6, S1 (real path) pass |

@@ -121,7 +121,7 @@ Rules:
 
 1. **Consume on verify.** In the payment-success transaction the reservation is moved `ACTIVE → CONSUMED` by a conditional UPDATE (`WHERE status='ACTIVE' AND expires_at > now()`). Only a `CONSUMED` reservation permits `digital_codes → SOLD`.
 2. **DB-level guard [VERIFIED].** A `BEFORE UPDATE` trigger on `digital_codes` rejects `→ SOLD` unless the code's reservation is `CONSUMED` (prototype `003_orders_payments.sql`, test group "LATE PAYMENT"). Even buggy application code cannot deliver from an expired/released/re-assigned reservation. A `SOLD` code is immutable except `SOLD → VOID` (found and fixed during prototype testing: an earlier draft allowed re-pointing a SOLD code to another order item).
-3. **Verification grace.** When a payment enters `VERIFYING`, its reservation's `expires_at` is extended once by a configurable grace window (proposal: +5 min) and the sweeper skips reservations that have a payment in `VERIFYING`. This reduces avoidable late payments caused by slow gateway verification. **[proposal — confirm]**
+3. **Verification grace (decided: initial 5 minutes, configurable — `PAYMENT_VERIFY_GRACE_SECONDS`, default 300).** When a payment enters `VERIFYING`, its still-ACTIVE reservation's `expires_at` is extended once by the grace window and the sweeper skips reservations that have a payment in `VERIFYING`. The grace **never** revives an already EXPIRED/RELEASED reservation and never permits delivery without a CONSUMED reservation; if the reservation had already lapsed when verification completes, rule 4 applies unchanged.
 4. **Late payment path.** If consume returns `LATE` (reservation EXPIRED/RELEASED, or order EXPIRED/CANCELLED):
    - the payment is still recorded as `SUCCEEDED` (the money genuinely arrived) and posted to the ledger into the **suspense account** `SUSPENSE_UNRESOLVED_RECEIPTS`, not to revenue/prepayment (§9.2);
    - the order moves to `ON_HOLD` with an open `order_holds` row (`reason = LATE_PAYMENT_NO_RESERVATION`); no fulfillment task is created;
@@ -130,7 +130,7 @@ Rules:
    - **Re-reserve:** create a *new* reservation through the normal atomic path (same `SKIP LOCKED` logic, new TTL). If every item is obtained, consume it, reclassify suspense → normal posting, `ON_HOLD → PAID`, continue standard fulfillment. This is the only route to delivery and uses fresh stock, not the lapsed reservation. The original order price snapshot is honoured.
    - **Wait for restock / substitute:** keep on hold; substitution changes order items with customer consent, and any price difference is refunded.
    - **Refund to wallet** (suspense → customer wallet) or **refund to gateway** (via refund workflow, only if the gateway supports it).
-6. **Automation level:** v1 default is *manual review for every late payment*. An optional config flag `late_payment.auto_rereserve` (default `false`) could attempt option 1 automatically; whether to ever enable it is a business decision. **[OPEN D5']**
+6. **Automation level (decided 2026-11-01):** in v1 every late payment is reviewed and settled **manually**. No automatic re-reservation exists in v1; the `late_payment.auto_rereserve` flag is not implemented (a later version may reconsider it as a separate decision).
 7. **Alerts:** holds older than a threshold (proposal 30 min) raise an alert; a hold cannot silently age.
 8. Orders still `PENDING_PAYMENT` whose reservation expires become `EXPIRED` (no money involved). If a gateway success arrives afterward, rule 4 applies.
 
@@ -208,10 +208,10 @@ All accounts are in Rial. "Normal side" is the side that increases the balance. 
 | 5500 | `ADJUSTMENT_EXPENSE` | Expense | Debit | system | admin manual adjustments (reason + approval mandatory) |
 | 5600 | `CHARGEBACK_FRAUD_LOSS` | Expense | Debit | system | **reserved** |
 
-**Revenue recognition — two candidate modes, both representable with the accounts above; the choice is a configuration of the posting rules (`system_settings.accounting.revenue_recognition ∈ {ON_PAYMENT, ON_DELIVERY}`), not a schema difference.**
+**Revenue recognition — two candidate modes, both representable with the accounts above; the difference lives only in the ledger module's posting rules.**
 - **Mode A — on payment:** payment posts straight to `SALES_REVENUE`.
 - **Mode B — on delivery:** payment posts to `CUSTOMER_PREPAYMENTS`; delivery moves it to `SALES_REVENUE`.
-*Working assumption for development only: Mode B.* It must be confirmed (or replaced) by an accountant, together with VAT treatment and the COGS method, **before launch**; the ledger is append-only, so the mode cannot be silently changed after real postings exist (a change needs an approved cut-over date). The same applies to the account list itself.
+*Working assumption for development only: Mode B.* The mode is a **code-level constant chosen at release time and recorded in the repository/release notes — it is deliberately NOT a free setting in the admin panel** (decision of 2026-11-01; an operator must not be able to flip accounting policy at runtime). It must be confirmed (or replaced) by an accountant, together with VAT treatment and the COGS method, **before launch**; the ledger is append-only, so the mode cannot be silently changed after real postings exist (a change needs an approved cut-over date). The same applies to the account list itself.
 
 ### 9.3 Standard postings (amounts in Rial; `D` = debit, `C` = credit)
 
@@ -255,7 +255,7 @@ For every delivery the system records, in append-only fashion, *what was deliver
 ### 10.2 Refund workflow for digital products (decision 9 — rules pending business + legal decision)
 - `refunds(id, order_id, payment_id, requested_by, reason_code, amount, destination ∈ WALLET|GATEWAY, status, policy_version, eligibility_snapshot jsonb, decided_by, decided_at, override_reason)` and `refund_items(refund_id, order_item_id, amount, disclosure_state_at_request)`; `refund_status_history`.
 - **Facts are captured, rules are configuration.** At request time the system snapshots each item's delivery/disclosure state (§10.1), fulfillment status, supplier-order status and payment/gateway refund capability into `eligibility_snapshot`. A versioned, configurable policy table maps `(product_type, disclosure_state, elapsed time)` → `AUTO_ALLOWED | REVIEW_REQUIRED | DENIED`.
-- **Launch default until the business/legal decision exists:** undelivered items → refundable (approval by permission holder); anything `DELIVERED_UNREVEALED`, `REVEALED_*`, or supplier-confirmed → `REVIEW_REQUIRED` (never automatic); overriding a `REVEALED` item needs permission `refunds.override_revealed` and a written reason, both audited. These are *safe placeholders*, not the final policy.
+- **Current policy is TEMPORARY (confirmed 2026-11-01) and needs legal review before it is finalised.** Launch default until the business/legal decision exists: undelivered items → refundable (approval by permission holder); anything `DELIVERED_UNREVEALED`, `REVEALED_*`, or supplier-confirmed → `REVIEW_REQUIRED` (never automatic); overriding a `REVEALED` item needs permission `refunds.override_revealed` and a written reason, both audited. These are *safe placeholders*, not the final policy.
 - Refunds post to the ledger per §9.3 and change `payments.status` to `PARTIALLY_REFUNDED/REFUNDED`; they do not rewrite order history. Gateway refunds are used only if the chosen gateway supports them (unknown today); otherwise refunds default to wallet credit. **[OPEN B-refund, legal review]**
 
 ## 11. Payments

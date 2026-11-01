@@ -1,0 +1,13 @@
+node_modules/
+.next/
+out/
+dist/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+# secrets & local config — never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
