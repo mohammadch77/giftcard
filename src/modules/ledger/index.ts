@@ -4,7 +4,7 @@
  * Chart of accounts = PROPOSED (D10): revenue-recognition timing is not decided and not configurable.
  */
 export const MODULE_NAME = "ledger" as const;
-export { ensureAccount, post, reverse, getBalance, trialBalance, verifyIntegrity, getTransaction, SENSITIVE_KINDS } from "./application/ledger-service";
+export { ensureAccount, findTransactionByKey, post, reverse, getBalance, trialBalance, verifyIntegrity, getTransaction, SENSITIVE_KINDS } from "./application/ledger-service";
 export type {
   AccountInfo, AccountRef, IntegrityFinding, LedgerDeps, PostEntry, PostInput, PostResult, ReverseInput, TransactionView, TrialBalance, TrialBalanceRow,
 } from "./application/ledger-service";

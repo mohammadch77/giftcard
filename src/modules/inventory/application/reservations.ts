@@ -274,3 +274,10 @@ export async function getSoldCodeRef(db: Database | Tx, orderItemRef: string): P
   const r = first<{ id: string }>(await db.execute(sql`select id from digital_codes where order_item_ref = ${orderItemRef} and status = 'SOLD'`));
   return r?.id ?? null;
 }
+
+/** Reservation statuses by id (for reconciliation across modules). */
+export async function getReservationStatuses(db: Database | Tx, ids: readonly string[]): Promise<Map<string, ReservationStatus>> {
+  if (ids.length === 0) return new Map();
+  const r = await db.execute(sql`select id, status from inventory_reservations where id in (${sql.join(ids.map((i) => sql`${i}::uuid`), sql`, `)})`);
+  return new Map((r.rows as { id: string; status: ReservationStatus }[]).map((x) => [x.id, x.status]));
+}

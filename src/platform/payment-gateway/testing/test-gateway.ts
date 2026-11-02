@@ -1,4 +1,4 @@
-import type { GatewayCreateRequest, GatewayCreateResult, GatewayVerifyReply, GatewayVerifyRequest, PaymentGateway } from "../index";
+import type { GatewayCapabilities, GatewayRefundRequest, GatewayRefundResult, GatewayRefundVerifyReply, GatewayRefundVerifyRequest, GatewayCreateRequest, GatewayCreateResult, GatewayVerifyReply, GatewayVerifyRequest, PaymentGateway } from "../index";
 
 /**
  * TEST DOUBLE — must never be imported by production code (only src/platform/composition may bridge).
@@ -8,6 +8,13 @@ export type VerifyScript = { status: "PAID" | "FAILED" | "UNKNOWN"; amount?: num
 
 export class TestPaymentGateway implements PaymentGateway {
   readonly key = "test";
+  capabilities: GatewayCapabilities = { refund: true, refundIdempotent: false };
+  /** Refund scripting: how the refund REQUEST behaves, and what a later status query says. */
+  refundMode: "accept" | "reject" | "throw" = "accept";
+  refundVerify: GatewayRefundVerifyReply["status"] | "THROW" = "REFUNDED";
+  refundVerifyAmount: number | undefined;
+  readonly refundCalls: GatewayRefundRequest[] = [];
+  refundVerifyCalls = 0;
   readonly created: GatewayCreateRequest[] = [];
   verifyCalls = 0;
   createMode: "ok" | "reject" | "throw" = "ok";
@@ -37,5 +44,19 @@ export class TestPaymentGateway implements PaymentGateway {
     if (s === "THROW") throw new Error("simulated verify timeout");
     if (!s) return { status: "UNKNOWN", gatewayRef: req.gatewayRef };
     return { status: s.status, gatewayRef: req.gatewayRef, ...(s.amount !== undefined ? { amount: s.amount } : {}) };
+  }
+
+  async refundPayment(req: GatewayRefundRequest): Promise<GatewayRefundResult> {
+    this.refundCalls.push(req);
+    if (this.refundMode === "throw") throw new Error("simulated unknown refund failure");
+    if (this.refundMode === "reject") return { status: "REJECTED" };
+    return { status: "ACCEPTED", refundRef: `rf-${req.refundId.slice(-8)}` };
+  }
+
+  async verifyRefund(req: GatewayRefundVerifyRequest): Promise<GatewayRefundVerifyReply> {
+    this.refundVerifyCalls++;
+    if (this.refundVerify === "THROW") throw new Error("simulated verify timeout");
+    const amount = this.refundVerifyAmount ?? this.refundCalls.find((c) => c.refundId === req.refundId)?.amount;
+    return { status: this.refundVerify, ...(amount !== undefined ? { amount } : {}) };
   }
 }

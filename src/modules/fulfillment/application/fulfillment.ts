@@ -306,3 +306,16 @@ export async function listTasksForOrder(db: Database | Tx, orderRef: string): Pr
   const r = await db.execute(sql`select ${COLS} from fulfillment_tasks where order_ref = ${orderRef} order by order_item_ref`);
   return (r.rows as unknown as TaskRow[]).map(toView);
 }
+
+/**
+ * Cancel the open tasks of a refunded order (PENDING / PROCESSING / FAILED -> CANCELLED). Refuses (returns blocked > 0) when any task is
+ * COMPLETED: a delivered item is not cancellable here. Idempotent.
+ */
+export async function cancelTasksForOrder(tx: Tx, clock: Clock, orderRef: string, actorId: string, reason: string): Promise<{ cancelled: number; blocked: number }> {
+  const now = clock.now();
+  const blocked = Number((await tx.execute(sql`select count(*)::int c from fulfillment_tasks where order_ref = ${orderRef} and status = 'COMPLETED'`)).rows[0]!.c);
+  if (blocked > 0) return { cancelled: 0, blocked };
+  const r = await tx.execute(sql`update fulfillment_tasks set status = 'CANCELLED', last_error = ${reason.slice(0, 200)}, updated_at = ${iso(now)}::timestamptz where order_ref = ${orderRef} and status in ('PENDING','PROCESSING','FAILED') returning id`);
+  for (const row of r.rows as { id: string }[]) await event(tx, row.id, "CANCELLED", actorId, now, reason.slice(0, 200));
+  return { cancelled: r.rows.length, blocked: 0 };
+}

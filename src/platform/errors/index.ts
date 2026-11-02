@@ -61,7 +61,10 @@ export type DomainErrorCode =
   | "ORDER_NOT_FOUND"
   | "ORDER_EXPIRED"
   | "ORDER_ACCOUNTING_NOT_CONFIGURED"
-  | "ORDER_RESERVATION_TTL_NOT_CONFIGURED";
+  | "ORDER_RESERVATION_TTL_NOT_CONFIGURED"
+  | "REFUND_INVALID"
+  | "REFUND_NOT_FOUND"
+  | "REFUND_BLOCKED";
 
 export class DomainError extends Error {
   readonly code: DomainErrorCode;

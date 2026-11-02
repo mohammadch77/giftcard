@@ -25,9 +25,24 @@ export interface GatewayVerifyRequest {
 }
 export type GatewayVerifyReply = { status: "PAID" | "FAILED" | "UNKNOWN"; gatewayRef: string; /** Integer Rial actually captured. */ amount?: number };
 
+/**
+ * OPTIONAL refund capability (hypothesis — a real gateway's refund support is unknown, X1/B13). An adapter that does not declare
+ * `capabilities.refund` is never asked to refund. A refund is COMPLETED only when `verifyRefund` says REFUNDED with the exact amount;
+ * `refundPayment` ACCEPTED means "request taken", nothing more. A thrown error = UNKNOWN outcome (never blindly re-sent unless the
+ * gateway documents `refundIdempotent`; `refundId` is the idempotency reference).
+ */
+export interface GatewayCapabilities { refund: boolean; refundIdempotent: boolean }
+export interface GatewayRefundRequest { refundId: string; gatewayRef: string; /** Integer Rial. */ amount: number }
+export type GatewayRefundResult = { status: "ACCEPTED"; refundRef?: string } | { status: "REJECTED" };
+export interface GatewayRefundVerifyRequest { refundId: string; gatewayRef: string; refundRef?: string }
+export type GatewayRefundVerifyReply = { status: "REFUNDED" | "PENDING" | "FAILED" | "UNKNOWN"; amount?: number };
+
 export interface PaymentGateway {
   /** Stable key stored in payments.gateway (e.g. 'test'). */
   readonly key: string;
+  readonly capabilities?: GatewayCapabilities;
+  refundPayment?(req: GatewayRefundRequest): Promise<GatewayRefundResult>;
+  verifyRefund?(req: GatewayRefundVerifyRequest): Promise<GatewayRefundVerifyReply>;
   createPayment(req: GatewayCreateRequest): Promise<GatewayCreateResult>;
   verifyPayment(req: GatewayVerifyRequest): Promise<GatewayVerifyReply>;
 }

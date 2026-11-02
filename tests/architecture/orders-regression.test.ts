@@ -26,9 +26,9 @@ describe("orders boundaries (2b-8)", () => {
     const foreign = /\b(from|join|into|update)\s+(payments|payment_events|digital_codes|inventory_\w+|stock_counters|fulfillment_\w+|deliveries|delivery_secrets|ledger_\w+|product_variants|products|wallet_\w+|supplier_\w+)\b/i;
     expect(ordersSrc().match(foreign)).toBeNull();
   });
-  it("matrix unchanged; orders does not use cart, fraud, promotions or identity yet", () => {
+  it("matrix unchanged; orders does not use cart, fraud, promotions, identity or suppliers", () => {
     expect(allowed.orders).toEqual(["cart", "catalog", "pricing", "promotions", "inventory", "payments", "wallet", "fulfillment", "ledger", "fraud", "identity", "audit"]);
-    expect(ordersSrc()).not.toMatch(/@\/modules\/(cart|fraud|promotions|identity|wallet|suppliers)\b/);
+    expect(ordersSrc()).not.toMatch(/@\/modules\/(cart|fraud|promotions|identity|suppliers)\b/); // wallet: reconciliation reads incomplete top-ups (allowed by the matrix)
   });
   it("D10: no revenue-recognition account is referenced by orders and the default policy refuses", async () => {
     expect(ordersSrc()).not.toMatch(/SALES_REVENUE|CUSTOMER_PREPAYMENTS|CUSTOMER_WALLET|COGS|REFUNDS_PAYABLE/);

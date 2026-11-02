@@ -10,7 +10,7 @@ export type { RouteView, SupplierAdminContext } from "./application/admin";
 export { syncSupplierProducts } from "./application/sync";
 export type { SyncResult } from "./application/sync";
 export {
-  createSupplierOrder, findSupplierOrderByKey, getSupplierOrder, reconcileSupplierOrder, resolveSupplierOrderManually, submitSupplierOrder, sweepStuckSubmissions, withSupplierDeliverable,
+  createSupplierOrder, findSupplierOrderByKey, getSupplierOrder, listAgedUnresolvedOrders, reconcileSupplierOrder, resolveSupplierOrderManually, submitSupplierOrder, sweepStuckSubmissions, withSupplierDeliverable,
 } from "./application/orders";
 export type { ReconcileOutcome, SubmitOutcome, SupplierOrderView } from "./application/orders";
 export type { SupplierDeps } from "./application/shared";

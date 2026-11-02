@@ -295,6 +295,9 @@ For every delivery the system records, in append-only fashion, *what was deliver
 - `audit_logs(id, actor_id, actor_type, action, entity_type, entity_id, before jsonb, after jsonb, ip, ua, created_at)` append-only; secrets redacted at write; optional hash-chain column for tamper evidence. **[OPEN: need hash chain?]**
 - `notifications(user_id, channel SMS|EMAIL|IN_APP, template, payload, status, …)` fed by outbox.
 
+## 15b. Refunds and reconciliation (migrations 0022–0023, Phase 2b-9)
+`refund_policy_versions/rules` (read-only to the app; version `temporary-0`), `refunds` (immutable identity columns, set-once decision/ledger/gateway fields, one live refund per order, four-eyes CHECK, completed ⇒ ledger txn), `refund_items` (disclosure snapshot; commit-time check: all items + exact total, PO002), `refund_status_history`, `reconciliation_runs` / `reconciliation_findings` (append-only). Gates: `orders_cancel_gate`, `order_holds_refund_gate` (PO002). Cross-module FKs created in SQL (P-1). Owner is seeded the routine refund/reconciliation permissions; `orders.refunds.override_revealed` is seeded to no role.
+
 ## 16. Concurrency & invariant test plan (summary)
 
 Correctness tests (fast, deterministic, in CI) and stress tests (slow, separate job) are distinct.

@@ -6,7 +6,7 @@
  * refunds (B12/B13, 2b-9), cash-out (B5: confirmed absent).
  */
 export const MODULE_NAME = "wallet" as const;
-export { completeTopUp, decideAdjustment, getTopUp, getWalletBalance, getWalletBalanceAdmin, requestAdjustment, startTopUp } from "./application/wallet";
+export { completeTopUp, decideAdjustment, findIncompleteSucceededTopUps, getTopUp, getWalletBalance, getWalletBalanceAdmin, requestAdjustment, startTopUp } from "./application/wallet";
 export type { StartTopUpResult, TopUpView, WalletAdminContext } from "./application/wallet";
 export { WALLET_PERMISSIONS } from "./domain/permissions";
 export type { TopUpLimits, WalletPermissionDef } from "./domain/permissions";

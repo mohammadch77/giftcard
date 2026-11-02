@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import { recordAudit } from "@/modules/audit";
 import type { AuditActor } from "@/modules/audit";
 import { adminWalletCredit, adminWalletDebit, ensureAccount, gatewayReceivable, getBalance, post, systemAccount, walletAccount, walletTopUp } from "@/modules/ledger";
-import { findPaymentByGatewayRef, initiatePayment, startGatewayPayment, verifyPayment } from "@/modules/payments";
+import { findPaymentByGatewayRef, getPayment, initiatePayment, startGatewayPayment, verifyPayment } from "@/modules/payments";
 import type { PaymentView, StartOutcome, VerifyDeps, VerifyOutcome } from "@/modules/payments";
 import type { Clock } from "@/platform/clock";
 import type { Database, Tx } from "@/platform/db";
@@ -168,3 +168,14 @@ export async function decideAdjustment(c: WalletAdminContext, adjustmentId: stri
   });
 }
 
+
+/** Top-ups whose payment SUCCEEDED but which are not COMPLETED (credit missing) — reconciliation input. */
+export async function findIncompleteSucceededTopUps(db: Database, limit = 100): Promise<{ topupId: string; paymentId: string }[]> {
+  const rows = (await db.execute(sql`select id, payment_id from wallet_topups where status = 'REQUESTED' and payment_id is not null order by created_at limit ${Math.min(limit, 500)}`)).rows as { id: string; payment_id: string }[];
+  const out: { topupId: string; paymentId: string }[] = [];
+  for (const r of rows) {
+    const p = await getPayment(db, r.payment_id);
+    if (p?.status === "SUCCEEDED") out.push({ topupId: r.id, paymentId: r.payment_id });
+  }
+  return out;
+}

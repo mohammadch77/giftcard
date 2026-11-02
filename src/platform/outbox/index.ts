@@ -171,3 +171,12 @@ export function idempotentHandler(
     );
   };
 }
+
+/** Health numbers for reconciliation: dead-lettered events and the age of the oldest pending one. Read-only. */
+export async function outboxStats(db: Database | Tx, clock: Clock = systemClock): Promise<{ dead: number; pending: number; oldestPendingSeconds: number }> {
+  const r = await db.execute(sql`select count(*) filter (where status = 'DEAD')::int as dead, count(*) filter (where status in ('PENDING','PROCESSING'))::int as pending,
+                                        min(available_at) filter (where status = 'PENDING') as oldest from outbox_events`);
+  const x = r.rows[0] as { dead: number; pending: number; oldest: Date | string | null };
+  const oldest = x.oldest ? new Date(typeof x.oldest === "string" ? x.oldest.replace(" ", "T").replace(/(\.\d{3})\d*/, "$1").replace(/([+-]\d{2})$/, "$1:00") : x.oldest) : null;
+  return { dead: x.dead, pending: x.pending, oldestPendingSeconds: oldest ? Math.max(0, Math.round((clock.now().getTime() - oldest.getTime()) / 1000)) : 0 };
+}

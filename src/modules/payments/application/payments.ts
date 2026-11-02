@@ -250,3 +250,15 @@ export async function listNeedingReview(c: PaymentsAdminContext, limit = 50): Pr
   const r = await c.db.execute(sql`select ${COLS} from payments where status = 'NEEDS_REVIEW' order by created_at limit ${Math.min(limit, 200)}`);
   return (r.rows as unknown as Row[]).map(toView);
 }
+
+/**
+ * Close a NEEDS_REVIEW payment as FAILED once the money it brought in has been returned (refund completed by the order flow, in the
+ * SAME transaction). There is no way to turn a reviewed payment into SUCCEEDED here: accepting a mismatching amount is an open policy (B12).
+ */
+export async function closeReviewedPayment(tx: Tx, clock: Clock, paymentId: string, note: string): Promise<boolean> {
+  if (note.trim().length < 5) throw new DomainError("PAYMENT_INVALID", "a note is required");
+  await setTransitionContext(tx, { actorId: SYSTEM.id, reason: note.trim().slice(0, 200) });
+  const r = await tx.execute(sql`update payments set status = 'FAILED', review_reason = ${`closed after refund: ${note.trim().slice(0, 150)}`}, updated_at = ${iso(clock.now())}::timestamptz where id = ${paymentId} and status = 'NEEDS_REVIEW' returning id`);
+  if (r.rows.length) await recordAudit(tx, { actor: SYSTEM, action: "payments.payment.review_closed", entity: { type: "payment", id: paymentId }, occurredAt: clock.now() });
+  return r.rows.length === 1;
+}

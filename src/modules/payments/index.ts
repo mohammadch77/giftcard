@@ -6,7 +6,7 @@
  * Manual resolution of NEEDS_REVIEW is NOT implemented (needs refund/accounting policy: B12/B13, D10).
  */
 export const MODULE_NAME = "payments" as const;
-export { findPaymentByGatewayRef, getPayment, getPaymentAdmin, getPaymentForUser, initiatePayment, listNeedingReview, listVerificationDue, startGatewayPayment, verifyPayment } from "./application/payments";
+export { closeReviewedPayment, findPaymentByGatewayRef, getPayment, getPaymentAdmin, getPaymentForUser, initiatePayment, listNeedingReview, listVerificationDue, startGatewayPayment, verifyPayment } from "./application/payments";
 export type { PaymentsAdminContext, StartOutcome, VerifyDeps, VerifyHooks, VerifyOutcome } from "./application/payments";
 export { DEFAULT_MAX_VERIFY_ATTEMPTS, DEFAULT_VERIFY_LEASE_SECONDS, FINAL_STATUSES, PAYMENT_PERMISSIONS } from "./domain/types";
 export type { PaymentPermissionDef, PaymentPurpose, PaymentStatus, PaymentView } from "./domain/types";

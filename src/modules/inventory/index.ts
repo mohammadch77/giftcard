@@ -7,7 +7,7 @@
 export const MODULE_NAME = "inventory" as const;
 export { adjustStock, getStock, importCodes, setCodeStatus } from "./application/admin";
 export type { ImportResult, InventoryAdminContext } from "./application/admin";
-export { availability, consume, getSoldCodeRef, markSold, release, reserve, sweepExpired, verifyInventory, withDeliverySecret } from "./application/reservations";
+export { availability, consume, getReservationStatuses, getSoldCodeRef, markSold, release, reserve, sweepExpired, verifyInventory, withDeliverySecret } from "./application/reservations";
 export type { Availability, ConsumeOutcome, DeliveryRequest, IntegrityFinding, ReservationView, SoldAssignment } from "./application/reservations";
 export { INVENTORY_PERMISSIONS } from "./domain/permissions";
 export type { InventoryPermissionDef } from "./domain/permissions";

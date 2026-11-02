@@ -43,6 +43,10 @@ const APPLIED: Record<string, string> = {
   "0017_payments_wallet_guards.sql": "8c19437072424be67de0b3006deb6de84cc52e2fe5f189ad48622d1c420d1d18",
   "0018_suppliers_fulfillment_tables.sql": "676d235af79a9b1fb84d3a7551fbf5b70ceb528b7c51512f2f4bc1f7c78a7570",
   "0019_suppliers_fulfillment_guards.sql": "f3f1f70b5abd68517d9568c3ae9a8f7af11c8428244470d8dc7fd767e1ceff96",
+  "0020_orders_tables.sql": "f66db2370d26d79c11e28ac9b5847d0f6b106837ae7e53b2b92bf5bc8e915d35",
+  "0021_orders_guards.sql": "051b1c7bb2fc2c1069b6d94c55fec398693ac69db96eeb5032474e295e52f36e",
+  "0022_refunds_tables.sql": "9b9a42ea9dfc22d3bad98a890e0992e47cfba04a8858cac886ded0c207e6418b",
+  "0023_refunds_guards.sql": "25b7c00b1e38aa84916405595ead6981be4a6d23befabaa2209cd4528c346840",
 };
 
 describe("applied migrations are immutable", () => {

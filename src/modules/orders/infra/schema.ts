@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { bigint, check, customType, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { bigint, boolean, check, customType, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 /**
  * Orders tables — private to the orders module. All money is integer Rial (PG domain rial_amount). Order items are IMMUTABLE
@@ -105,4 +105,131 @@ export const orderHolds = pgTable(
     uniqueIndex("order_holds_open_uq").on(t.orderId, t.reason).where(sql`${t.resolvedAt} is null`),
     index("order_holds_open_idx").on(t.openedAt).where(sql`${t.resolvedAt} is null`),
   ],
+);
+
+// ------------------------------------------------------------------ refunds and reconciliation (2b-9)
+
+/** Refund policy is DATA and versioned. 'temporary-0' holds the documented SAFE PLACEHOLDERS (B12: legal review pending); changing it is a migration. */
+export const refundPolicyVersions = pgTable(
+  "refund_policy_versions",
+  {
+    version: text("version").primaryKey(),
+    status: text("status").notNull(),
+    legalReviewRequired: boolean("legal_review_required").notNull(),
+    active: boolean("active").notNull().default(false),
+    description: text("description").notNull(),
+    createdAt: ts("created_at").notNull(),
+  },
+  (t) => [check("refund_policy_versions_status", sql`${t.status} in ('TEMPORARY','FINAL')`), uniqueIndex("refund_policy_active_uq").on(t.active).where(sql`${t.active}`)],
+);
+
+export const refundPolicyRules = pgTable(
+  "refund_policy_rules",
+  {
+    version: text("version").notNull().references(() => refundPolicyVersions.version),
+    disclosureState: text("disclosure_state").notNull(),
+    decision: text("decision").notNull(),
+  },
+  (t) => [
+    uniqueIndex("refund_policy_rules_uq").on(t.version, t.disclosureState),
+    check("refund_policy_rules_state", sql`${t.disclosureState} in ('NOT_DELIVERED','DELIVERED_UNREVEALED','REVEALED_BY_CUSTOMER','REVEALED_BY_ADMIN_ONLY')`),
+    check("refund_policy_rules_decision", sql`${t.decision} in ('ELIGIBLE','REVIEW_REQUIRED','OVERRIDE_REQUIRED','DENIED')`),
+  ],
+);
+
+export const refunds = pgTable(
+  "refunds",
+  {
+    id: uuid("id").primaryKey(),
+    orderId: uuid("order_id").notNull().references(() => orders.id),
+    holdId: uuid("hold_id").references(() => orderHolds.id),
+    source: text("source").notNull(),
+    /** For SUSPENSE_RECEIPT refunds: the idempotency key of the parked ledger posting (`late:<payment>` / `payrecv:<payment>`). */
+    suspenseKey: text("suspense_key"),
+    paymentId: uuid("payment_id"),
+    requestedBy: text("requested_by").notNull(),
+    requesterType: text("requester_type").notNull(),
+    reasonCode: text("reason_code").notNull(),
+    amount: rialAmount("amount").notNull(),
+    destination: text("destination").notNull(),
+    status: text("status").notNull().default("REQUESTED"),
+    policyVersion: text("policy_version").notNull().references(() => refundPolicyVersions.version),
+    eligibilitySnapshot: jsonb("eligibility_snapshot").notNull(),
+    decision: text("decision").notNull(),
+    decidedBy: text("decided_by"),
+    decidedAt: ts("decided_at"),
+    decisionNote: text("decision_note"),
+    overrideReason: text("override_reason"),
+    externalOutcome: text("external_outcome").notNull().default("NONE"),
+    gatewayRefundRef: text("gateway_refund_ref"),
+    attempts: integer("attempts").notNull().default(0),
+    ledgerTxnId: bigint("ledger_txn_id", { mode: "number" }),
+    requestHash: bytea("request_hash").notNull(),
+    createdAt: ts("created_at").notNull(),
+    updatedAt: ts("updated_at").notNull(),
+    completedAt: ts("completed_at"),
+  },
+  (t) => [
+    // At most ONE live refund per order (full-order refunds only): a duplicate request cannot create a second one.
+    uniqueIndex("refunds_one_per_order_uq").on(t.orderId).where(sql`${t.status} <> 'REJECTED'`),
+    check("refunds_status", sql`${t.status} in ('REQUESTED','APPROVED','REJECTED','PROCESSING','COMPLETED','FAILED')`),
+    check("refunds_source", sql`(${t.source} = 'ORDER_PAYMENT' and ${t.suspenseKey} is null) or (${t.source} = 'SUSPENSE_RECEIPT' and ${t.suspenseKey} is not null and ${t.holdId} is not null)`),
+    check("refunds_destination", sql`${t.destination} in ('WALLET','GATEWAY')`),
+    check("refunds_requester", sql`${t.requesterType} in ('CUSTOMER','ADMIN')`),
+    check("refunds_decision", sql`${t.decision} in ('ELIGIBLE','REVIEW_REQUIRED','OVERRIDE_REQUIRED','DENIED')`),
+    check("refunds_outcome", sql`${t.externalOutcome} in ('NONE','ACCEPTED','UNKNOWN','CONFIRMED','REJECTED')`),
+    check("refunds_amount", sql`${t.amount} > 0`),
+    check("refunds_gateway_needs_payment", sql`${t.destination} <> 'GATEWAY' or ${t.paymentId} is not null`),
+    check("refunds_decided", sql`${t.status} in ('REQUESTED') or (${t.decidedBy} is not null and ${t.decidedAt} is not null and char_length(btrim(coalesce(${t.decisionNote}, ''))) >= 5)`),
+    check("refunds_four_eyes", sql`${t.requesterType} <> 'ADMIN' or ${t.decidedBy} is null or ${t.decidedBy} <> ${t.requestedBy}`),
+    check("refunds_denied_not_approved", sql`${t.decision} <> 'DENIED' or ${t.status} in ('REQUESTED','REJECTED')`),
+    check("refunds_override", sql`${t.decision} <> 'OVERRIDE_REQUIRED' or ${t.status} in ('REQUESTED','REJECTED') or char_length(btrim(coalesce(${t.overrideReason}, ''))) >= 10`),
+    check("refunds_completed", sql`${t.status} <> 'COMPLETED' or (${t.ledgerTxnId} is not null and ${t.completedAt} is not null and (${t.destination} <> 'GATEWAY' or ${t.externalOutcome} = 'CONFIRMED'))`),
+    index("refunds_open_idx").on(t.createdAt).where(sql`${t.status} in ('REQUESTED','APPROVED','PROCESSING','FAILED')`),
+  ],
+);
+
+export const refundItems = pgTable(
+  "refund_items",
+  {
+    id: uuid("id").primaryKey(),
+    refundId: uuid("refund_id").notNull().references(() => refunds.id),
+    orderItemId: uuid("order_item_id").notNull().references(() => orderItems.id),
+    amount: rialAmount("amount").notNull(),
+    disclosureState: text("disclosure_state").notNull(),
+  },
+  (t) => [uniqueIndex("refund_items_uq").on(t.refundId, t.orderItemId), check("refund_items_state", sql`${t.disclosureState} in ('NOT_DELIVERED','DELIVERED_UNREVEALED','REVEALED_BY_CUSTOMER','REVEALED_BY_ADMIN_ONLY')`)],
+);
+
+export const refundStatusHistory = pgTable("refund_status_history", {
+  id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+  entityId: uuid("entity_id").notNull(),
+  fromStatus: text("from_status"),
+  toStatus: text("to_status").notNull(),
+  actorId: text("actor_id"),
+  reason: text("reason"),
+  occurredAt: ts("occurred_at").notNull(),
+});
+
+export const reconciliationRuns = pgTable("reconciliation_runs", {
+  id: uuid("id").primaryKey(),
+  startedBy: text("started_by").notNull(),
+  startedAt: ts("started_at").notNull(),
+  finishedAt: ts("finished_at"),
+  jobs: text("jobs").notNull(),
+  findingCount: integer("finding_count").notNull().default(0),
+});
+
+export const reconciliationFindings = pgTable(
+  "reconciliation_findings",
+  {
+    id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+    runId: uuid("run_id").notNull().references(() => reconciliationRuns.id),
+    job: text("job").notNull(),
+    severity: text("severity").notNull(),
+    subject: text("subject").notNull(),
+    detail: text("detail").notNull(),
+    foundAt: ts("found_at").notNull(),
+  },
+  (t) => [check("reconciliation_findings_severity", sql`${t.severity} in ('INFO','WARN','CRITICAL')`), index("reconciliation_findings_run_idx").on(t.runId, t.id)],
 );

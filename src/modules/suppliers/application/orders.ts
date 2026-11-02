@@ -316,3 +316,10 @@ export async function withSupplierDeliverable<T>(db: Database, keys: KeyProvider
   }
 }
 
+
+/** UNKNOWN / SUBMITTING supplier orders older than `olderThanSeconds` (ageing report for reconciliation). */
+export async function listAgedUnresolvedOrders(db: Database | Tx, clock: Clock, olderThanSeconds: number, limit = 100): Promise<{ id: string; status: SupplierOrderStatus; orderItemRef: string }[]> {
+  const cutoff = new Date(clock.now().getTime() - olderThanSeconds * 1000);
+  const r = await db.execute(sql`select id, status, order_item_ref from supplier_orders where status in ('UNKNOWN','SUBMITTING') and updated_at <= ${iso(cutoff)}::timestamptz order by updated_at limit ${Math.min(limit, 500)}`);
+  return (r.rows as { id: string; status: SupplierOrderStatus; order_item_ref: string }[]).map((x) => ({ id: x.id, status: x.status, orderItemRef: x.order_item_ref }));
+}

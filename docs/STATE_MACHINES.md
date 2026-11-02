@@ -96,3 +96,8 @@ A reservation in `EXPIRED`/`RELEASED` is never revived. Late-payment recovery cr
 ## 8. Code (`digital_codes.status`)
 
 `AVAILABLE ↔ RESERVED → SOLD ■`; `AVAILABLE|RESERVED → VOID ■`; `AVAILABLE → QUARANTINED → AVAILABLE|VOID` (suspected bad batch). `SOLD` is never reversed except by an explicit audited admin `VOID`.
+
+
+## Refund (implemented in 2b-9, machine `refund`)
+`(none) → REQUESTED → APPROVED | REJECTED ■`; `APPROVED → PROCESSING → COMPLETED ■ | FAILED`; `FAILED → PROCESSING` (retry). Every transition needs an actor (engine + history `refund_status_history`). Extra DB rules: COMPLETED needs a ledger transaction and (gateway) external outcome CONFIRMED; DENIED cannot leave REQUESTED/REJECTED; an ADMIN requester cannot also decide. Gateway outcome (`external_outcome`) is separate from status: NONE → UNKNOWN (intent committed before the call) → ACCEPTED → CONFIRMED, or REJECTED.
+**Deviation recorded:** the order `payment_status` cache is NOT changed to `PARTIALLY_REFUNDED/REFUNDED` in 2b-9 (partial refunds do not exist; the refund record + the CANCELLED order are the truth). `orders.status` gains `FULFILLING → CANCELLED` (only through `orders_cancel_gate`: a COMPLETED refund must exist).

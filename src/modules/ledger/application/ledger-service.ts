@@ -340,3 +340,9 @@ export async function getTransaction(db: Database | Tx, id: number): Promise<Tra
     actor: { type: t.actor_type as AuditActor["type"], id: t.actor_id as string }, entries: await loadEntries(db, id),
   };
 }
+
+/** Look a posting up by its business idempotency key (e.g. `late:<paymentId>`), for reversals. */
+export async function findTransactionByKey(db: Database | Tx, idempotencyKey: string): Promise<TransactionView | null> {
+  const t = rows(await db.execute(sql`select id from ledger_transactions where idempotency_key = ${idempotencyKey}`))[0];
+  return t ? getTransaction(db, Number(t.id)) : null;
+}

@@ -3,7 +3,7 @@ import { CATALOG_PERMISSIONS } from "@/modules/catalog";
 import { INVENTORY_PERMISSIONS } from "@/modules/inventory";
 import { FULFILLMENT_PERMISSIONS } from "@/modules/fulfillment";
 import { PAYMENT_PERMISSIONS } from "@/modules/payments";
-import { ORDER_PERMISSIONS } from "@/modules/orders";
+import { ORDER_PERMISSIONS, REFUND_PERMISSIONS } from "@/modules/orders";
 import { SUPPLIER_PERMISSIONS } from "@/modules/suppliers";
 import { WALLET_PERMISSIONS } from "@/modules/wallet";
 import { IDENTITY_PERMISSIONS, PermissionCatalog, SYSTEM_ROLES, bootstrapFirstOwner, createIdentity } from "@/modules/identity";
@@ -62,9 +62,10 @@ describe("first-owner bootstrap (operator script path)", () => {
   it("migration seeds exactly the roles/permissions defined in code (no wildcard, no ledger.* in identity)", async () => {
     const r = (await f.t.pool.query("select r.name, array_agg(rp.permission order by rp.permission) perms from roles r join role_permissions rp on rp.role_id = r.id and rp.revoked_at is null group by r.name")).rows;
     const db = Object.fromEntries(r.map((x) => [x.name, x.perms]));
-    // Later modules seed their own permissions for `owner` in their migrations (catalog 0013, inventory 0015, payments/wallet 0017, suppliers/fulfillment 0019, orders 0021); nothing else changes.
+    // Later modules seed their own permissions for `owner` in their migrations (catalog 0013, inventory 0015, payments/wallet 0017, suppliers/fulfillment 0019, orders 0021, refunds 0023); nothing else changes.
+    // `orders.refunds.override_revealed` is registered in code but deliberately seeded to NO role.
     // `fulfillment.codes.reveal` is registered in code but deliberately seeded to NO role.
-    const extra: Record<string, string[]> = { owner: [...CATALOG_PERMISSIONS, ...INVENTORY_PERMISSIONS, ...PAYMENT_PERMISSIONS, ...WALLET_PERMISSIONS, ...SUPPLIER_PERMISSIONS, ...ORDER_PERMISSIONS, ...FULFILLMENT_PERMISSIONS.filter((p) => p.key !== "fulfillment.codes.reveal")].map((p) => p.key) };
+    const extra: Record<string, string[]> = { owner: [...CATALOG_PERMISSIONS, ...INVENTORY_PERMISSIONS, ...PAYMENT_PERMISSIONS, ...WALLET_PERMISSIONS, ...SUPPLIER_PERMISSIONS, ...ORDER_PERMISSIONS, ...REFUND_PERMISSIONS.filter((p) => p.key !== "orders.refunds.override_revealed"), ...FULFILLMENT_PERMISSIONS.filter((p) => p.key !== "fulfillment.codes.reveal")].map((p) => p.key) };
     for (const [name, def] of Object.entries(SYSTEM_ROLES)) expect(db[name], name).toEqual([...def.permissions, ...(extra[name] ?? [])].sort());
     expect(Object.keys(db).sort()).toEqual(["owner", "security_admin", "support_agent"]);
     expect(JSON.stringify(db)).not.toMatch(/ledger|\*/);

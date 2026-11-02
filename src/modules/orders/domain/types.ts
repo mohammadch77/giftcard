@@ -44,3 +44,20 @@ export const ORDER_PERMISSIONS: readonly OrderPermissionDef[] = [
   { key: "orders.cancel", description: "Cancel an unpaid order on behalf of a customer", sensitive: false },
   { key: "orders.resolve_hold", description: "Resolve or review an order hold (late payment re-reservation)", sensitive: true },
 ];
+
+// ------------------------------------------------------------------ refunds (2b-9)
+export type RefundStatus = "REQUESTED" | "APPROVED" | "REJECTED" | "PROCESSING" | "COMPLETED" | "FAILED";
+export type RefundDestination = "WALLET" | "GATEWAY";
+export type RefundDecision = "ELIGIBLE" | "REVIEW_REQUIRED" | "OVERRIDE_REQUIRED" | "DENIED";
+export type DisclosureStateName = "NOT_DELIVERED" | "DELIVERED_UNREVEALED" | "REVEALED_BY_CUSTOMER" | "REVEALED_BY_ADMIN_ONLY";
+export type RefundExternalOutcome = "NONE" | "ACCEPTED" | "UNKNOWN" | "CONFIRMED" | "REJECTED";
+
+export const REFUND_PERMISSIONS: readonly OrderPermissionDef[] = [
+  { key: "orders.refunds.read", description: "View refunds", sensitive: false },
+  { key: "orders.refunds.request", description: "Request a refund on behalf of a customer", sensitive: false },
+  { key: "orders.refunds.approve", description: "Approve or reject a refund (never your own request)", sensitive: true },
+  { key: "orders.refunds.override_revealed", description: "Approve a refund of an item whose secret was revealed (written reason; granted to no role by default)", sensitive: true },
+  { key: "orders.refunds.execute", description: "Run an approved refund", sensitive: true },
+  { key: "orders.reconciliation.run", description: "Run reconciliation jobs", sensitive: false },
+  { key: "orders.reconciliation.read", description: "View reconciliation findings", sensitive: false },
+];
