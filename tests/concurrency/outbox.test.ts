@@ -1,6 +1,8 @@
+import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { withTransaction } from "@/platform/db";
-import { claimOutbox, enqueueOutbox, runOutboxOnce } from "@/platform/outbox";
+import { claimOutbox, enqueueOutbox, idempotentHandler, runOutboxOnce } from "@/platform/outbox";
+import type { ClaimedEvent } from "@/platform/outbox";
 import type { OutboxRegistry } from "@/platform/outbox";
 import { ManualClock } from "@/platform/clock/testing";
 import { createTestDatabase } from "../helpers/db";
@@ -70,5 +72,18 @@ describe("outbox under concurrency", () => {
     const recovered = (await t.pool.query("select count(*)::int n from outbox_events where attempts = 2 and status = 'DONE' and aggregate_type = 'load'")).rows[0].n;
     expect(recovered).toBe(50);
     expect((await t.pool.query("select count(*)::int n from outbox_events where status <> 'DONE' and aggregate_type = 'load'")).rows[0].n).toBe(0);
+  });
+
+  it("the same event handled by 25 concurrent deliveries (lease lost while still running) applies its effect once", async () => {
+    const clock = new ManualClock("2026-04-01T00:00:00Z");
+    await t.pool.query("create table if not exists dup_effects (event_id bigint not null)");
+    const id = await withTransaction(t.db, (tx) => enqueueOutbox(tx, { eventType: "dup.event", aggregateType: "dup", aggregateId: "1", payload: {} }, clock));
+    const handler = idempotentHandler(t.db, "dup_consumer", async (tx, e) => {
+      await tx.execute(sql`insert into dup_effects values (${e.id})`);
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    const event: ClaimedEvent = { id, eventType: "dup.event", aggregateType: "dup", aggregateId: "1", payload: {}, attempt: 1 };
+    await Promise.all(Array.from({ length: 25 }, () => handler(event)));
+    expect((await t.pool.query("select count(*)::int n from dup_effects where event_id=$1", [id])).rows[0].n).toBe(1);
   });
 });

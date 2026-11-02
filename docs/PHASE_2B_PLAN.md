@@ -94,7 +94,7 @@ Notation — **Contract** = what other modules may import from `index.ts` (propo
 - **Acceptance:** all above pass in CI; `npm run check` clean; boundary rules extended so production code cannot import `**/testing/**` doubles except through the guarded factory (P-5).
 - **Risks:** *financial* — rounding rule errors (mitigated by exhaustive table tests); *security* — wrongly granted privileges (grants test), trigger bypass by superuser (documented limitation, mitigated by audit shipping later).
 
-### 2b-1b Crypto & secrets plumbing (no tables)
+### 2b-1b Crypto & secrets plumbing (no tables)  *(IMPLEMENTED — details in `PHASE_2B_1B_NOTES.md` and `CRYPTO_DESIGN.md`; **TOTP was NOT built**: design-only, see `TOTP_DESIGN.md`; `redact()` was extended with a minimal structured logger)*
 - **Build:** `KeyProvider` port (`currentVersion`, `wrap/unwrapDek`, `hmacKey`, `listVersions`); `EnvelopeCipher` (AES-256-GCM, fresh random DEK per secret, 96-bit random nonce, **AAD = table|row-id|kind**); `rewrapDek(from→to)`; `codeHash` (HMAC-SHA256 with a key distinct from the KEK, versioned); RFC 6238 TOTP helper (no dependency); `redact()` log/error scrubber; provider **conformance test-suite** that any future provider must pass; `DevKeyProvider` (key material from a local env var, **rejected when `NODE_ENV=production`**, `KEY_PROVIDER` env: `none|dev`; `none` ⇒ crypto features fail closed).
 - **No production provider is written** — D8 (custody method) is open. The conformance suite makes the future choice (root-only file, secret manager, …) a plug-in.
 - **Contract:** `encryptSecret/decryptSecret`, `codeHash`, `rewrap`, `totp`, `redact`.

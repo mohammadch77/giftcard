@@ -68,9 +68,9 @@ module.exports = {
     },
     {
       name: "no-testing-doubles-in-production",
-      comment: "Test doubles live in a testing/ folder or a testing.ts file and may only be used by tests (P-5).",
+      comment: "Test/dev doubles live in a testing/ folder or a testing.ts file and may only be used by tests and by the guarded factory in src/platform/composition (P-5).",
       severity: "error",
-      from: { path: "^src/", pathNot: "(^|/)testing(/|\\.[cm]?tsx?$)" },
+      from: { path: "^src/", pathNot: "(^|/)testing(/|\\.[cm]?tsx?$)|^src/platform/composition/" },
       to: { path: "(^|/)testing(/|\\.[cm]?tsx?$)" },
     },
     {

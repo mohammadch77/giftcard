@@ -1,6 +1,7 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
+import { getLogger } from "../logging";
 import * as schema from "./schema";
 
 export type Database = NodePgDatabase<typeof schema>;
@@ -18,7 +19,7 @@ export function createDatabase(connectionString: string, poolMax = 10): Database
   // An error on an IDLE pooled client (e.g. server restart, admin termination) is emitted on the
   // pool; without a listener Node would crash the process. Log a non-sensitive classification only.
   pool.on("error", (error: Error & { code?: string }) => {
-    console.error(`[db] idle client error: ${error.code ?? error.name}`);
+    getLogger().error("db idle client error", { code: error.code ?? error.name });
   });
   const db = drizzle(pool, { schema });
   return { db, pool, close: () => pool.end() };

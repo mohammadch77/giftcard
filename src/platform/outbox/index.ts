@@ -1,7 +1,9 @@
 import { sql } from "drizzle-orm";
+import { withTransaction } from "../db/client";
+import { withIdempotency } from "../idempotency";
 import { systemClock } from "../clock";
 import type { Clock } from "../clock";
-import { isDomainError } from "../errors";
+import { DomainError, isDomainError } from "../errors";
 import type { Database, Tx } from "../db/client";
 import type { JsonValue } from "../idempotency";
 
@@ -136,3 +138,36 @@ export async function runOutboxOnce(db: Database, registry: OutboxRegistry, o: O
   return summary;
 }
 
+
+/**
+ * DELIVERY SEMANTICS: the outbox is AT-LEAST-ONCE, never "exactly-once". A worker can crash after a
+ * handler's side effect but before the ack (or lose its lease while still running), so the same event
+ * can be handled again. Every consumer must therefore be idempotent.
+ *
+ * `idempotentHandler` is the standard way: the handler's database effects and an idempotency record
+ * keyed by (consumer, event id) commit in ONE transaction, so a replay of the same event finds the
+ * record and does nothing. This gives "effect applied once" ONLY for effects inside that transaction.
+ * Effects outside the database (SMS, supplier API, e-mail) must carry their own idempotency key
+ * (e.g. the event id) towards the external system — see SUPPLIER/PAYMENT designs.
+ */
+const CONSUMER_RE = /^[a-z][a-z0-9_.:-]{0,40}$/;
+
+export function idempotentHandler(
+  db: Database,
+  consumer: string,
+  effect: (tx: Tx, event: ClaimedEvent) => Promise<void>,
+): OutboxHandler {
+  if (!CONSUMER_RE.test(consumer)) throw new DomainError("INVALID_ARGUMENT", "invalid consumer name");
+  return async (event) => {
+    await withTransaction(db, (tx) =>
+      withIdempotency(
+        tx,
+        { scope: `outbox.${consumer}`, key: `outbox-event-${event.id}`, request: { eventId: event.id, eventType: event.eventType } },
+        async () => {
+          await effect(tx, event);
+          return { handled: true };
+        },
+      ),
+    );
+  };
+}

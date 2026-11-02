@@ -12,7 +12,7 @@ Status: **DRAFT v0.2 — Phase 1, aligned with decisions D1–D7.** Describes th
 | Admin panel | god-mode | phishing, weak auth, privilege creep |
 | Reputation/chargeback exposure | fraud using stolen cards | carding, automated purchases |
 
-## 2. Secrets & encryption
+## 2. Secrets & encryption  *(implementation details, failure behaviour and rotation runbook: `CRYPTO_DESIGN.md`)*
 
 ### 2.1 Envelope encryption (codes, account credentials, supplier credentials, delivery secrets)
 - Per-secret random 256-bit **DEK**; payload encrypted with **AES-256-GCM**, unique 96-bit nonce, **AAD = table + row id + kind** (prevents moving ciphertext between rows).

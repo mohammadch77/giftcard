@@ -133,6 +133,13 @@ describe("dependency-cruiser rules actually reject violations", () => {
     expect(cruise({ "src/platform/clock/index.ts": "export const x = 1;", "src/platform/clock/testing.ts": "import { x } from './index';\nexport const y = x;" })).toEqual([]);
   });
 
+  it("only src/platform/composition may bridge production code to a dev/test double", () => {
+    const files = { "src/platform/crypto/testing/dev.ts": "export class Dev {}", "src/platform/crypto/index.ts": "export const x = 1;" };
+    expect(cruise({ ...files, "src/platform/composition/factory.ts": "import { Dev } from '../crypto/testing/dev';\nexport const f = Dev;" })).toEqual([]);
+    expect(cruise({ ...files, "src/platform/other/factory.ts": "import { Dev } from '../crypto/testing/dev';\nexport const f = Dev;" })).toContain("no-testing-doubles-in-production");
+    expect(cruise({ ...files, "src/modules/orders/index.ts": "import { Dev } from '../../platform/crypto/testing/dev';\nexport const f = Dev;" })).toContain("no-testing-doubles-in-production");
+  });
+
   it("the real source tree is clean", () => {
     expect(violationsOf(repo)).toEqual([]);
   });

@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { configureLogger, getLogger } from "@/platform/logging";
 import { loadEnv } from "@/platform/config";
 import { createDatabase } from "@/platform/db";
 import { runOutboxOnce } from "@/platform/outbox";
@@ -13,21 +14,23 @@ const registry: OutboxRegistry = new Map();
 
 async function main(): Promise<void> {
   const env = loadEnv(); // throws on invalid configuration
+  configureLogger({ level: env.LOG_LEVEL });
+  const log = getLogger();
   const handle = createDatabase(env.DATABASE_URL, 2);
   const workerId = `worker:${process.pid}:${randomBytes(4).toString("hex")}`;
   let stopping = false;
   for (const signal of ["SIGINT", "SIGTERM"] as const) process.once(signal, () => (stopping = true));
 
-  console.warn(`[worker] ${workerId} started (NODE_ENV=${env.NODE_ENV}); handlers registered: ${registry.size}`);
+  log.info("worker started", { workerId, nodeEnv: env.NODE_ENV, handlers: registry.size });
   try {
     while (!stopping) {
       const summary = await runOutboxOnce(handle.db, registry, { workerId, batchSize: env.OUTBOX_BATCH_SIZE });
-      if (summary.claimed > 0) console.warn(`[worker] outbox ${JSON.stringify(summary)}`);
+      if (summary.claimed > 0) log.info("outbox batch", { ...summary });
       await new Promise((resolve) => setTimeout(resolve, env.OUTBOX_POLL_INTERVAL_MS));
     }
   } finally {
     await handle.close();
-    console.warn("[worker] stopped");
+    log.info("worker stopped", { workerId });
   }
 }
 
@@ -38,6 +41,6 @@ function classify(error: unknown): string {
 }
 
 main().catch((error: unknown) => {
-  console.error("[worker] fatal:", classify(error));
+  getLogger().error("worker fatal", { error: classify(error) });
   process.exit(1);
 });
