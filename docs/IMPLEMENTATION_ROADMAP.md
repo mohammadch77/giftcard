@@ -53,6 +53,7 @@ Launch is blocked until every row above is implemented, tested and reviewed — 
 - Estimated relative effort (rough, not a commitment): Phase 2 is the largest (~45 %), Phase 4 ~20 %, Phase 5/6 ~15 % each.
 
 ## Immediate next steps
+0. **New session? Start with `docs/SESSION_HANDOFF.md`** (state, blockers, first instructions).
 1. **2b-1a authorised and in progress** (reported separately); no further 2b step starts without separate approval.
 2. 2b-3 Identity (run #7) and 2b-4 Catalog + minimal pricing (run #8) CI-confirmed; 2b-5 Inventory CI-confirmed (run #9); 2b-6 Payments + Wallet CI-confirmed (run #10); 2b-7 Suppliers + Fulfillment CI-confirmed (run #11; generic adapter only, X3); 2b-8 Orders & Checkout implemented (PHASE_2B_8_NOTES.md; **settlement fails closed until D10, checkout until B3**); 2b-9 and later need separate approval.
 3. Decisions: direction APPROVED on 2026-11-11 for D10, B12, B13, B3, B5, B10, B7, B1, B2, C-2, D8, RET-1, X1–X3, ORD-1 (DECISIONS fourteenth review); still blocking production: accountant validation (D10), legal review (B12, RET-1), real gateway/SMS/supplier (X1–X3), production KMS (D8); B11 later modules.
