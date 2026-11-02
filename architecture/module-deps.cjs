@@ -7,7 +7,7 @@
  */
 module.exports = {
   audit: [],
-  ledger: [],
+  ledger: ["audit"], // every financial posting is audited (2b-2); audit itself depends on nothing
   identity: ["audit"],
   catalog: ["audit"],
   promotions: ["catalog", "audit"],

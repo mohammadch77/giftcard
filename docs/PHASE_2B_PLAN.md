@@ -102,7 +102,7 @@ Notation — **Contract** = what other modules may import from `index.ts` (propo
 - **Acceptance:** conformance suite green for DevKeyProvider; documented rotation procedure test passes; no key bytes ever logged.
 - **Risks:** *security* — nonce misuse, key in logs/heap dumps, silent fallback to weak key (fail-closed test), AAD omitted. KEK loss is an operational risk owned by D8.
 
-### 2b-2 Audit + Ledger
+### 2b-2 Audit + Ledger  *(IMPLEMENTED — see `LEDGER_DESIGN.md` and `PHASE_2B_2_NOTES.md`; note the matrix change `ledger → audit`)*
 - **Tables/migrations:** `audit_logs` (append-only, partial redaction at write, request id, actor type); `ledger_accounts`, `ledger_transactions`, `ledger_entries`, `ledger_account_balances` + triggers (entries only in creating txn, balanced at COMMIT, floor, append-only incl. TRUNCATE, immutable `min_balance` F7, unique reversal per transaction), `chart_version` column. **No accounts seeded by migration** — accounts are created by code from a versioned *proposed* chart (`chart: 'proposed-0'`), so the accountant's later changes don't require rewriting history.
 - **Rewritten from the prototype with review changes:** F7, F9, explicit mapping of the floor violation to `INSUFFICIENT_FUNDS`, `currency = 'IRR'` CHECK, amounts > 0, `reverses_id` partial unique.
 - **Contracts:** `audit.record(tx, entry)`; `ledger.ensureAccount(tx, spec)`, `ledger.post(tx, {kind, idempotencyKey, ref, entries})`, `ledger.reverse(tx, txnId, reason)`, `ledger.balance(tx, accountId)`, `ledger.verifyIntegrity()`; pure posting-rule builders for the proposed chart (`REVENUE_RECOGNITION = 'ON_DELIVERY'` is a **code constant labelled provisional — not an env/admin setting**, E4).
@@ -110,7 +110,7 @@ Notation — **Contract** = what other modules may import from `index.ts` (propo
 - **Acceptance:** all ported prototype ledger checks exist as application tests; integrity verifier green; audit rows contain no canary secrets.
 - **Risks:** *financial* — sign/side errors, lost updates, deadlock, accounting policy not final (outputs flagged provisional); *security* — privileged tampering (detected, not prevented); audit log growth (no purge, P-7).
 
-### 2b-3 Identity (OTP, sessions, RBAC)
+### 2b-3 Identity (OTP, sessions, RBAC) — **includes the full TOTP/MFA flow for administrators (B14, final)**
 - **Tables:** `users`, `user_identities` (PHONE now, EMAIL attachable; E.164 CHECK; one primary per type), `otp_challenges` (hashed code), `user_sessions` (hashed token), `roles`, `permissions`, `role_permissions`, `user_roles`, `admin_totp` (secret via envelope), `rate_limit_counters` (Postgres-backed limiter).
 - **Contracts:** `identity.requestOtp(ctx)`, `verifyOtp(ctx) → session`, `getSession(token)`, `revokeSession/revokeAll`, `authorize(actor, permission, resource?)`, `requirePermission`, `SmsProvider` port (+ `TestSms` capture, forbidden in production), `normalizePhone`. Permission codes are code constants seeded by migration; **no default admin and no default credentials** — first admin created only by an explicit operator script run with a phone allow-list.
 - **Independent (private):** OTP hashing/attempt logic, session storage, limiter internals, TOTP storage. **Public:** the functions above and the `Actor`/`Permission` types.

@@ -21,6 +21,13 @@ export function createDatabase(connectionString: string, poolMax = 10): Database
   pool.on("error", (error: Error & { code?: string }) => {
     getLogger().error("db idle client error", { code: error.code ?? error.name });
   });
+  // A connection that is killed while CHECKED OUT (e.g. pg_terminate_backend, network reset) emits 'error'
+  // on the client itself, which would otherwise crash the process. The in-flight query already rejects.
+  pool.on("connect", (client) => {
+    client.on("error", (error: Error & { code?: string }) => {
+      getLogger().error("db client error", { code: error.code ?? error.name });
+    });
+  });
   const db = drizzle(pool, { schema });
   return { db, pool, close: () => pool.end() };
 }

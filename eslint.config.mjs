@@ -42,6 +42,14 @@ export default defineConfig([
     },
   },
   {
+    // Financial modules run inside database transactions: no external I/O may be performed (rule 7).
+    files: ["src/modules/ledger/**/*.ts", "src/modules/audit/**/*.ts"],
+    rules: {
+      "no-restricted-globals": ["error", { name: "fetch", message: "No external calls in ledger/audit code (they run inside DB transactions)." }],
+      "no-restricted-imports": ["error", { patterns: ["node:http", "node:https", "node:http2", "node:net", "node:tls", "node:dgram", "node:dns", "undici", "http", "https", "net"] }],
+    },
+  },
+  {
     // Inside src/platform/money only the SQL-interpolation rule applies (unit conversion lives there).
     files: ["src/platform/money/**/*.ts"],
     rules: {

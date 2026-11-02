@@ -173,6 +173,8 @@ Pattern applied to orders, payments, fulfillment tasks, reservations, supplier o
 
 Prototype **[VERIFIED]**: `docs/db-prototypes/001_ledger.sql`; tests (see `db-prototypes/LAST_RUN.txt`): balanced txn accepted, unbalanced rejected at COMMIT, overdraft rejected, duplicate posting rejected, UPDATE/DELETE/TRUNCATE blocked, late entries into a committed transaction rejected, 500 parallel wallet debits never overdraw.
 
+> **Implemented in step 2b-2** — see `LEDGER_DESIGN.md` for the as-built schema, triggers, reports and differences from this design.
+
 ### 9.1 Structure
 - `ledger_accounts(type, normal_side, owner_type/owner_id, currency, min_balance)` — one **wallet account per user** (LIABILITY, `min_balance=0`), plus system accounts.
 - `ledger_transactions(kind, idempotency_key UNIQUE, reference_type/id, reverses_id, created_by)` — the unit of posting.

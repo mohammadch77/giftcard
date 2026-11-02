@@ -61,3 +61,12 @@ All errors are typed `DomainError`s with stable codes and contain no key materia
 
 ## 7. What is NOT in this step
 No business table, no inventory/credential storage, no real provider, no TOTP, no OTP, no ledger/wallet, no key deletion or crypto-shredding.
+
+## 8. OPEN SECURITY TASK — independent known-answer tests (SEC-KAT)
+Status: **open, gates production use of the cryptography** (owner decision of 2026-11-03). Today's tests prove round-trips, tamper detection and rotation against our own implementation; they do **not** compare against independently published vectors. **Before any production KeyProvider is connected**, add and pass:
+1. **AES-256-GCM** known-answer vectors from an independent standard (e.g. NIST CAVP / the original GCM specification test cases) for encryption, decryption and tag output, including AAD-only and empty-plaintext cases.
+2. **HMAC-SHA-256** vectors from an independent source (RFC 4231).
+3. **AAD checks:** a vector-based test that any change to AAD fails authentication, and that our AAD encoding (`secretAad`) is stable (golden values pinned).
+4. **Key versions and rotation:** golden-file tests that an envelope written under KEK v1 remains readable after rotation to v2 and after re-wrap (fixtures committed as synthetic, non-secret test data).
+5. **Authentication-tag failures:** truncated/flipped/zero tags and wrong nonce lengths must fail with `DECRYPT_FAILED` and never return partial plaintext.
+This does **not** block starting the ledger (2b-2). It blocks the final approval of the cryptography for production.

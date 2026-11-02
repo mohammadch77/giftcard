@@ -1,7 +1,9 @@
 import { randomBytes } from "node:crypto";
-import { Client } from "pg";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { Client, Pool } from "pg";
 import type { PoolClient } from "pg";
 import { createDatabase } from "../../src/platform/db/client";
+import * as platformSchema from "../../src/platform/db/schema";
 import type { DatabaseHandle } from "../../src/platform/db/client";
 import { runMigrations } from "../../src/platform/db/migrate";
 
@@ -108,4 +110,13 @@ export async function asRole<T>(t: TestDatabase, role: string, fn: (client: Pool
     await client.query("RESET ROLE").catch(() => undefined);
     client.release();
   }
+}
+
+/** A Drizzle handle whose every connection runs as `role` (e.g. the least-privilege application role). */
+export function createDatabaseAsRole(t: TestDatabase, role: string, max = 10): DatabaseHandle {
+  const pool = new Pool({ connectionString: t.url, options: `-c role=${role}`, max });
+  pool.on("error", () => undefined);
+  pool.on("connect", (client) => client.on("error", () => undefined));
+  const db = drizzle(pool, { schema: platformSchema });
+  return { db, pool, close: () => pool.end() };
 }

@@ -35,7 +35,7 @@ Passwords: **argon2id** (tuned params, per-hash salt). OTPs / reset tokens / ses
 - **Email attach (future-ready):** `user_identities(type=EMAIL)` verified by link/OTP; never used for login until explicitly enabled.
 - Passwords are not part of the v1 primary flow; if enabled later: argon2id.
 - Server-side sessions: random 256-bit token stored hashed; cookie `HttpOnly; Secure; SameSite=Lax; Path=/`, `__Host-` prefix; rotate on login/privilege change; absolute + idle timeouts; list/revoke sessions.
-- **Admin:** OTP **plus** mandatory TOTP 2FA, short idle timeout, step-up for sensitive actions (reveal codes, ledger adjustment, credential change, role change, hold resolution), optional IP allowlist. Admin phone numbers are allow-listed identities, not self-registered.
+- **Admin (B14, FINAL 2026-11-03):** MFA is mandatory for ALL administrators and staff with administrative access before V1 release — first factor mobile OTP, second factor TOTP; sensitive operations require step-up authentication; recovery codes are single-use, secure and audited; MFA recovery is a restricted, auditable process; customers are not required to use TOTP in V1 (design: `TOTP_DESIGN.md`). OTP **plus** mandatory TOTP 2FA, short idle timeout, step-up for sensitive actions (reveal codes, ledger adjustment, credential change, role change, hold resolution), optional IP allowlist. Admin phone numbers are allow-listed identities, not self-registered.
 
 ## 4. Authorization
 - RBAC with granular permission codes (§ DATABASE_DESIGN §3); deny by default; checks in the application layer entry points, not in UI.

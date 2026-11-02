@@ -25,7 +25,7 @@ D1 money unit (Rial) · D2 ORM (Drizzle) · D3 login (mobile OTP; email attachab
 | B10 | Four-eyes approval thresholds for ledger adjustments / refunds. | |
 | B11 | Admin roles and permission matrix. | |
 | B12 | **Refund rules (current policy is TEMPORARY; legal review required before it is final)** per product type and disclosure state (not delivered / delivered-unrevealed / revealed), time windows, who may override. **Requires business decision + legal review.** Current design only records the facts and uses safe placeholders. | DATABASE_DESIGN §10.2 |
-| B14 | **Mandatory MFA (TOTP) for administrator accounts before launch?** Recommendation: yes (see TOTP_DESIGN.md). Decide before step 2b-3. | decides whether TOTP is built in 2b-3 |
+| SEC-KAT | **OPEN security task:** independent known-answer tests for AES-256-GCM, HMAC-SHA-256, AAD, key versions/rotation and auth-tag failures must be added and passed **before any production KeyProvider is connected** (blocks final production approval of the crypto, not the ledger). | before production crypto |
 | B13 | Is a refund to the original gateway required, or is wallet-credit refund acceptable? | depends on gateway capability (unknown) |
 
 ## External dependencies (blocked until the owner provides them)
