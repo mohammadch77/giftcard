@@ -16,7 +16,7 @@ D1 money unit (Rial) · D2 ORM (Drizzle) · D3 login (mobile OTP; email attachab
 |---|---|---|
 | B1 | Launch catalog: brands, regions, denominations, fulfillment method per variant. **Also approve the fulfilment-compatibility proposal C-2.** Catalog schema/services exist (2b-4); no real data is loaded. | seeds catalog |
 | B2 | (C-2 allows GAME_ACCOUNT → AUTO_CODE/MANUAL only.) Game accounts: pre-loaded stock (→ `digital_codes(ACCOUNT)`) or created per order (→ manual task)? Account-sharing/ToS risk acceptance? | |
-| B3 | Reservation TTL (technical default 15 min, bounds 60–3600 s, supplied by the caller — implemented in 2b-5) and cart expiry. Needs your value before launch. | |
+| B3 | **Checkout reservation hold (seconds) and cart expiry — NO default exists since 2b-8: checkout is refused until `ORDER_RESERVATION_TTL_SECONDS` (60–3600) is set.** Inventory's 900 s is only that module's technical default. Cart expiry is needed when the cart exists (Phase 4). | before launch |
 | B4 | Discount stacking policy (DATABASE_DESIGN §13 proposal). | |
 | B5 | Wallet rules: top-up min/max (**no default exists; top-ups are refused until `WALLET_TOPUP_MIN_RIAL/MAX_RIAL` are set — 2b-6**); confirm **no cash-out** (none exists; major legal/AML implications). | before launch |
 | B6 | Ticket reopen window, SLA, attachment limits. | |
@@ -64,8 +64,9 @@ See `SECURITY.md §12`: sanctions and publisher ToS for foreign gaming products,
 | B11 | Admin role/permission matrix — 2b-3 part implemented (see above); later modules add theirs | 2b-4+ |
 | CAT-1 | `catalog_manager` role proposal (B11 continuation); product images/uploads (T6), SEO fields and per-type attribute schemas deferred (flat bounded `attrs` only) | Phase 3/4 |
 | INV-1 | Returned/refunded code handling (SOLD→VOID only exists as a transition, no API), supplier cost/COGS on batches (D10), code-expiry dates, bulk void by batch, reconciliation job schedule | 2b-7/2b-9, D10 |
-| PAY-1 | **D10 sub-decision blocking order payments:** wallet/gateway order payment credit account — `CUSTOMER_PREPAYMENTS` (Mode B) vs `SALES_REVENUE` (Mode A); manual resolution of NEEDS_REVIEW payments (B12/B13); real gateway docs (X1); gateway key/refund capability | 2b-8/2b-9 |
+| PAY-1 | **D10 sub-decision blocking order payments (2b-8 built the port and the fail-closed boundary; implementing the policy = one class once decided):** wallet/gateway order payment credit account — `CUSTOMER_PREPAYMENTS` (Mode B) vs `SALES_REVENUE` (Mode A); manual resolution of NEEDS_REVIEW payments (B12/B13); real gateway docs (X1); gateway key/refund capability | 2b-8/2b-9 |
 | SUP-1 | Supplier cost → COGS/pricing policy (D10), supplier prepaid/payable accounting, task cancellation on refund (2b-9), scheduler for `sweepStuckSubmissions` / reconciliation / `sweepExpired` / `listVerificationDue` workers, SSRF-safe outbound host allow-list when the first real adapter exists | 2b-8/2b-9, D10, X3 |
+| ORD-1 | Review/refund handling of `PAYMENT_NEEDS_REVIEW` and other holds (B12/B13); fraud/promotion hooks in checkout; schedulers for `expireStale`, `sweepExpired`, `verifyPayment` retries, supplier workers, `syncFulfillment` (outbox consumer for `fulfillment.delivered`); customer-visible hold wording | 2b-9, Phase 3/4 |
 | RET-1 | Retention policy for sessions, OTP challenges, rate-limit counters, recovery records, audit (no purge exists) | before launch |
 | HTTP-1 | HTTP routes, real cookie integration (`__Host-`, HttpOnly, Secure, SameSite=Lax), CSRF/Origin enforcement, client-IP derivation for `clientKey` | Phase 4 |
 | X2 | Production SMS provider (OTP cannot be delivered in production until chosen; `SmsProvider` port + fail-closed `NullSmsProvider` exist) | launch |

@@ -300,3 +300,9 @@ export async function withRevealedSecret<T>(deps: { db: Database; keys: KeyProvi
     plain.fill(0);
   }
 }
+
+/** Tasks of one order (read-only view for orders to derive its fulfilment status). */
+export async function listTasksForOrder(db: Database | Tx, orderRef: string): Promise<TaskView[]> {
+  const r = await db.execute(sql`select ${COLS} from fulfillment_tasks where order_ref = ${orderRef} order by order_item_ref`);
+  return (r.rows as unknown as TaskRow[]).map(toView);
+}

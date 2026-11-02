@@ -5,7 +5,7 @@
  * NOT here: orders/checkout (2b-8, which also installs the DB payment gate), refunds (2b-9), any real supplier (X3).
  */
 export const MODULE_NAME = "fulfillment" as const;
-export { claimManualTask, completeManualTask, createTasks, deliverAutoCodes, deliveryStatus, fulfillSupplierTask, getTask, listTasksAdmin, withRevealedSecret } from "./application/fulfillment";
+export { claimManualTask, completeManualTask, createTasks, deliverAutoCodes, deliveryStatus, fulfillSupplierTask, getTask, listTasksAdmin, listTasksForOrder, withRevealedSecret } from "./application/fulfillment";
 export type { FulfillDeps, FulfillmentAdminContext, RevealRequest, SupplierFulfillOutcome, TaskView } from "./application/fulfillment";
 export { FULFILLMENT_PERMISSIONS, REVEAL_LIMIT } from "./domain/types";
 export type { DisclosureState, FulfillmentMethod, FulfillmentPermissionDef, TaskStatus } from "./domain/types";

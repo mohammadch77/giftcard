@@ -51,6 +51,10 @@ const baseSchema = z.object({
   WALLET_TOPUP_MIN_RIAL: z.coerce.number().int().positive().optional(),
   WALLET_TOPUP_MAX_RIAL: z.coerce.number().int().positive().optional(),
 
+  // Checkout reservation hold in seconds (B3 is OPEN: NO default exists). Unset = checkout fails closed
+  // (ORDER_RESERVATION_TTL_NOT_CONFIGURED). The inventory module's 900 s is a technical default, not a business value.
+  ORDER_RESERVATION_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).optional(),
+
   // Worker / outbox tuning (platform, no business meaning).
   OUTBOX_POLL_INTERVAL_MS: z.coerce.number().int().min(100).max(60_000).default(1000),
   OUTBOX_BATCH_SIZE: z.coerce.number().int().min(1).max(1000).default(20),

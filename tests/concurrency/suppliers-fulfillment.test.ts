@@ -6,7 +6,7 @@ import { createSupplierOrder, reconcileSupplierOrder, submitSupplierOrder } from
 import { withTransaction } from "@/platform/db";
 import { makeCodes, sellableVariant } from "../helpers/inventory";
 import { invCtx } from "../helpers/inventory";
-import { readySupplier, routedVariant, supplierFixture } from "../helpers/suppliers";
+import { readySupplier, routedVariant, seedPaidOrder, supplierFixture } from "../helpers/suppliers";
 import type { SupplierFixture } from "../helpers/suppliers";
 
 let f: SupplierFixture;
@@ -23,8 +23,9 @@ const uid = (p = "x") => `${p}-${++n}-${Math.random().toString(36).slice(2, 6)}`
 const all = <T>(k: number, fn: (i: number) => Promise<T>) => Promise.all(Array.from({ length: k }, (_, i) => fn(i)));
 const fdeps = () => ({ ...f.deps, db: f.app.db });
 const mkTask = async (variantId: string, user = "u") => {
-  const orderItemRef = uid("item");
-  await withTransaction(f.app.db, (tx) => createTasks(tx, f.clock, { orderRef: uid("o"), userRef: user, paymentRef: "p", items: [{ orderItemRef, variantId }] }));
+  const so = await seedPaidOrder(f, user, [{ variantId }]);
+  const orderItemRef = so.refs[0]!;
+  await withTransaction(f.app.db, (tx) => createTasks(tx, f.clock, { orderRef: so.orderId, userRef: user, paymentRef: "p", items: [{ orderItemRef, variantId }] }));
   return { orderItemRef, id: (await f.t.pool.query("select id from fulfillment_tasks where order_item_ref = $1", [orderItemRef])).rows[0].id as string };
 };
 
@@ -86,8 +87,9 @@ describe("manual claims and reveals", () => {
     await importCodes(invCtx(f), v, { payloadKind: "CODE", codes: makeCodes(1) });
     const key = uid("r");
     const res = await withTransaction(f.app.db, (tx) => reserve(tx, f.clock, { reservationKey: key, orderRef: key, lines: [{ variantId: v, quantity: 1 }] }));
-    const ref = uid("item");
-    await withTransaction(f.app.db, (tx) => createTasks(tx, f.clock, { orderRef: key, userRef: "u-rev", paymentRef: "p", items: [{ orderItemRef: ref, variantId: v }] }));
+    const so = await seedPaidOrder(f, "u-rev", [{ variantId: v }]);
+    const ref = so.refs[0]!;
+    await withTransaction(f.app.db, (tx) => createTasks(tx, f.clock, { orderRef: so.orderId, userRef: "u-rev", paymentRef: "p", items: [{ orderItemRef: ref, variantId: v }] }));
     await withTransaction(f.app.db, (tx) => consume(tx, f.clock, res.reservationId));
     await withTransaction(f.app.db, (tx) => deliverAutoCodes(tx, f.clock, { reservationId: res.reservationId, assignments: [{ variantId: v, orderItemRef: ref }] }));
     const d = (await deliveryStatus(f.app.db, ref)).deliveryId!;
@@ -104,8 +106,9 @@ describe("manual claims and reveals", () => {
     await importCodes(invCtx(f), v, { payloadKind: "CODE", codes: makeCodes(2) });
     const key = uid("r");
     const res = await withTransaction(f.app.db, (tx) => reserve(tx, f.clock, { reservationKey: key, orderRef: key, lines: [{ variantId: v, quantity: 2 }] }));
-    const refs = [uid("i"), uid("i")];
-    await withTransaction(f.app.db, (tx) => createTasks(tx, f.clock, { orderRef: key, userRef: "u", paymentRef: "p", items: refs.map((orderItemRef) => ({ orderItemRef, variantId: v })) }));
+    const so = await seedPaidOrder(f, "u", [{ variantId: v, qty: 2 }]);
+    const refs = so.refs;
+    await withTransaction(f.app.db, (tx) => createTasks(tx, f.clock, { orderRef: so.orderId, userRef: "u", paymentRef: "p", items: refs.map((orderItemRef) => ({ orderItemRef, variantId: v })) }));
     await withTransaction(f.app.db, (tx) => consume(tx, f.clock, res.reservationId));
     const out = await all(20, () => withTransaction(f.app.db, (tx) => deliverAutoCodes(tx, f.clock, { reservationId: res.reservationId, assignments: refs.map((orderItemRef) => ({ variantId: v, orderItemRef })) })));
     expect(out.reduce((s, r) => s + r.delivered, 0)).toBe(2);

@@ -9,7 +9,7 @@ import { adjustStock } from "@/modules/inventory";
 import { ManualClock } from "@/platform/clock/testing";
 import { pgCode } from "../helpers/db";
 import { invCtx, makeCodes, sellableVariant } from "../helpers/inventory";
-import { CANARY, readySupplier, routedVariant, supCtx, supplierFixture } from "../helpers/suppliers";
+import { CANARY, readySupplier, routedVariant, seedPaidOrder, supCtx, supplierFixture } from "../helpers/suppliers";
 import type { SupplierFixture } from "../helpers/suppliers";
 
 let f: SupplierFixture;
@@ -32,8 +32,9 @@ const ctx = (actorId: string, allowed: "all" | string[] = "all"): FulfillmentAdm
 const rdeps = () => ({ db: f.app.db, keys: f.keys, clock: f.clock });
 const fdeps = () => ({ ...f.deps, db: f.app.db });
 const task = async (variantId: string, user = "user-1") => {
-  const orderItemRef = uid("item");
-  await withTransaction(f.app.db, (tx) => createTasks(tx, f.clock, { orderRef: uid("order"), userRef: user, paymentRef: "pay-1", items: [{ orderItemRef, variantId }] }));
+  const so = await seedPaidOrder(f, user, [{ variantId }]);
+  const orderItemRef = so.refs[0]!;
+  await withTransaction(f.app.db, (tx) => createTasks(tx, f.clock, { orderRef: so.orderId, userRef: user, paymentRef: "pay-1", items: [{ orderItemRef, variantId }] }));
   const id = (await f.t.pool.query("select id from fulfillment_tasks where order_item_ref = $1", [orderItemRef])).rows[0].id as string;
   return { id, orderItemRef };
 };
@@ -43,8 +44,9 @@ const dumpSecrets = async () => ["deliveries", "delivery_secrets", "fulfillment_
 describe("tasks", () => {
   it("one task per paid order item (idempotent), method taken from the catalog variant; queue is permissioned", async () => {
     const [a, m, s] = [await sellableVariant(f, "AUTO_CODE"), await sellableVariant(f, "MANUAL"), await sellableVariant(f, "SUPPLIER_API")];
-    const refs = [uid("i"), uid("i"), uid("i")];
-    const input = { orderRef: uid("o"), userRef: "u1", paymentRef: "pay-9", items: [{ orderItemRef: refs[0]!, variantId: a }, { orderItemRef: refs[1]!, variantId: m }, { orderItemRef: refs[2]!, variantId: s }] };
+    const so = await seedPaidOrder(f, "u1", [{ variantId: a }, { variantId: m }, { variantId: s }]);
+    const refs = so.refs;
+    const input = { orderRef: so.orderId, userRef: "u1", paymentRef: "pay-9", items: [{ orderItemRef: refs[0]!, variantId: a }, { orderItemRef: refs[1]!, variantId: m }, { orderItemRef: refs[2]!, variantId: s }] };
     expect(await withTransaction(f.app.db, (tx) => createTasks(tx, f.clock, input))).toEqual({ created: 3, existing: 0 });
     expect(await withTransaction(f.app.db, (tx) => createTasks(tx, f.clock, input))).toEqual({ created: 0, existing: 3 });
     const methods = (await f.t.pool.query("select method from fulfillment_tasks where order_item_ref = any($1) order by method", [refs])).rows.map((r) => r.method);
@@ -62,8 +64,9 @@ describe("inventory-backed delivery and reveal", () => {
     await importCodes(invCtx(f), v, { payloadKind: "CODE", codes: secrets });
     const key = uid("res");
     const res = await withTransaction(f.app.db, (tx) => reserve(tx, f.clock, { reservationKey: key, orderRef: `o-${key}`, ttlSeconds: ttl, lines: [{ variantId: v, quantity: secrets.length }] }));
-    const refs = secrets.map(() => uid("item"));
-    await withTransaction(f.app.db, (tx) => createTasks(tx, f.clock, { orderRef: `o-${key}`, userRef: user, paymentRef: "pay-1", items: refs.map((orderItemRef) => ({ orderItemRef, variantId: v })) }));
+    const so = await seedPaidOrder(f, user, [{ variantId: v, qty: secrets.length }]);
+    const refs = so.refs;
+    await withTransaction(f.app.db, (tx) => createTasks(tx, f.clock, { orderRef: so.orderId, userRef: user, paymentRef: "pay-1", items: refs.map((orderItemRef) => ({ orderItemRef, variantId: v })) }));
     return { v, res, refs, assignments: refs.map((orderItemRef) => ({ variantId: v, orderItemRef })) };
   }
   it("consumed reservation -> codes SOLD, deliveries + COMPLETED tasks; replay is a no-op; reveal returns the code to its owner only and tracks disclosure", async () => {
@@ -130,8 +133,9 @@ describe("inventory-backed delivery and reveal", () => {
     await importCodes(invCtx(f), v, { payloadKind: "CODE", codes: makeCodes(2) });
     const mkRes = (k: string) => withTransaction(f.app.db, (tx) => reserve(tx, clock, { reservationKey: k, orderRef: k, ttlSeconds: 60, lines: [{ variantId: v, quantity: 1 }] }));
     const late = await mkRes(uid("late"));
-    const ref = uid("item");
-    await withTransaction(f.app.db, (tx) => createTasks(tx, clock, { orderRef: "o", userRef: "u", paymentRef: "p", items: [{ orderItemRef: ref, variantId: v }] }));
+    const so = await seedPaidOrder(f, "u", [{ variantId: v }]);
+    const ref = so.refs[0]!;
+    await withTransaction(f.app.db, (tx) => createTasks(tx, clock, { orderRef: so.orderId, userRef: "u", paymentRef: "p", items: [{ orderItemRef: ref, variantId: v }] }));
     clock.advance(61_000);
     expect(await withTransaction(f.app.db, (tx) => consume(tx, clock, late.reservationId))).toMatchObject({ outcome: "LATE" });
     expect(await code(withTransaction(f.app.db, (tx) => deliverAutoCodes(tx, clock, { reservationId: late.reservationId, assignments: [{ variantId: v, orderItemRef: ref }] })))).toBe("INVENTORY_INVALID");
@@ -157,8 +161,9 @@ describe("inventory-backed delivery and reveal", () => {
     await adjustStock(invCtx(f), m, 3, "opening manual stock");
     const key = uid("mix");
     const res = await withTransaction(f.app.db, (tx) => reserve(tx, f.clock, { reservationKey: key, orderRef: key, lines: [{ variantId: a, quantity: 1 }, { variantId: m, quantity: 1 }] }));
-    const [ra, rm] = [uid("i"), uid("i")];
-    await withTransaction(f.app.db, (tx) => createTasks(tx, f.clock, { orderRef: key, userRef: "u", paymentRef: "p", items: [{ orderItemRef: ra, variantId: a }, { orderItemRef: rm, variantId: m }] }));
+    const so = await seedPaidOrder(f, "u", [{ variantId: a }, { variantId: m }]);
+    const [ra, rm] = so.refs as [string, string];
+    await withTransaction(f.app.db, (tx) => createTasks(tx, f.clock, { orderRef: so.orderId, userRef: "u", paymentRef: "p", items: [{ orderItemRef: ra, variantId: a }, { orderItemRef: rm, variantId: m }] }));
     await withTransaction(f.app.db, (tx) => consume(tx, f.clock, res.reservationId));
     expect(await withTransaction(f.app.db, (tx) => deliverAutoCodes(tx, f.clock, { reservationId: res.reservationId, assignments: [{ variantId: a, orderItemRef: ra }, { variantId: m, orderItemRef: rm }] }))).toMatchObject({ delivered: 1 });
     expect((await f.t.pool.query("select order_item_ref, status from fulfillment_tasks where order_item_ref in ($1,$2) order by order_item_ref", [ra, rm])).rows.find((r) => r.order_item_ref === rm)?.status).toBe("PENDING");
