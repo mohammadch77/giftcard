@@ -35,6 +35,8 @@ const APPLIED: Record<string, string> = {
   "0009_ledger_guards.sql": "76bf8b47ff442f9f57ce4c0a8e3e2f2a6e8a1142527c15f612408970664a7c56",
   "0010_identity_tables.sql": "1786615fe63bf9ab44cb20d0e542fea9bf13d26080f2d074f3ef0c0afba0593c",
   "0011_identity_guards.sql": "889ccd5ae52363de49e1e8d190b64d1e52c9c9bd2ecb42e7e0d6e1c37859e5e4",
+  "0012_catalog_tables.sql": "ee0d547eed8e78bc4a31250ea07fdef39a048a40c1f5ea82d8b517dc7e7dd13b",
+  "0013_catalog_guards.sql": "f32b1698ffd24e2fe19ee860ae6b65278590e01ddc863a1ae905416eddc3bb7d",
 };
 
 describe("applied migrations are immutable", () => {

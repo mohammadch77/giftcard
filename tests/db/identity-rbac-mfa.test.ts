@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { CATALOG_PERMISSIONS } from "@/modules/catalog";
+import { INVENTORY_PERMISSIONS } from "@/modules/inventory";
 import { IDENTITY_PERMISSIONS, PermissionCatalog, SYSTEM_ROLES, bootstrapFirstOwner, createIdentity } from "@/modules/identity";
 import { base32Decode, totp } from "@/modules/identity/domain/totp";
 import { NullKeyProvider } from "@/platform/crypto";
@@ -56,8 +57,8 @@ describe("first-owner bootstrap (operator script path)", () => {
   it("migration seeds exactly the roles/permissions defined in code (no wildcard, no ledger.* in identity)", async () => {
     const r = (await f.t.pool.query("select r.name, array_agg(rp.permission order by rp.permission) perms from roles r join role_permissions rp on rp.role_id = r.id and rp.revoked_at is null group by r.name")).rows;
     const db = Object.fromEntries(r.map((x) => [x.name, x.perms]));
-    // Later modules seed their own permissions for `owner` in their migrations (catalog in 0013); nothing else changes.
-    const extra: Record<string, string[]> = { owner: CATALOG_PERMISSIONS.map((p) => p.key) };
+    // Later modules seed their own permissions for `owner` in their migrations (catalog 0013, inventory 0015); nothing else changes.
+    const extra: Record<string, string[]> = { owner: [...CATALOG_PERMISSIONS, ...INVENTORY_PERMISSIONS].map((p) => p.key) };
     for (const [name, def] of Object.entries(SYSTEM_ROLES)) expect(db[name], name).toEqual([...def.permissions, ...(extra[name] ?? [])].sort());
     expect(Object.keys(db).sort()).toEqual(["owner", "security_admin", "support_agent"]);
     expect(JSON.stringify(db)).not.toMatch(/ledger|\*/);

@@ -39,7 +39,11 @@ export type DomainErrorCode =
   | "CATALOG_INVALID"
   | "CATALOG_NOT_FOUND"
   | "CATALOG_CONFLICT"
-  | "CATALOG_NOT_SELLABLE";
+  | "CATALOG_NOT_SELLABLE"
+  | "INVENTORY_INVALID"
+  | "INVENTORY_INSUFFICIENT"
+  | "INVENTORY_NOT_FOUND"
+  | "INVENTORY_NOT_MANAGED";
 
 export class DomainError extends Error {
   readonly code: DomainErrorCode;

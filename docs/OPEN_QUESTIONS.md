@@ -16,7 +16,7 @@ D1 money unit (Rial) · D2 ORM (Drizzle) · D3 login (mobile OTP; email attachab
 |---|---|---|
 | B1 | Launch catalog: brands, regions, denominations, fulfillment method per variant. **Also approve the fulfilment-compatibility proposal C-2.** Catalog schema/services exist (2b-4); no real data is loaded. | seeds catalog |
 | B2 | (C-2 allows GAME_ACCOUNT → AUTO_CODE/MANUAL only.) Game accounts: pre-loaded stock (→ `digital_codes(ACCOUNT)`) or created per order (→ manual task)? Account-sharing/ToS risk acceptance? | |
-| B3 | Reservation TTL (default 15 min) and cart expiry. | |
+| B3 | Reservation TTL (technical default 15 min, bounds 60–3600 s, supplied by the caller — implemented in 2b-5) and cart expiry. Needs your value before launch. | |
 | B4 | Discount stacking policy (DATABASE_DESIGN §13 proposal). | |
 | B5 | Wallet rules: top-up min/max; confirm **no cash-out** (cash-out has major legal/AML implications). | |
 | B6 | Ticket reopen window, SLA, attachment limits. | |
@@ -63,6 +63,7 @@ See `SECURITY.md §12`: sanctions and publisher ToS for foreign gaming products,
 | CI | Branch protection/required check, SHA-pinned actions, audit step (CI run #1 passed) | 2b-1a |
 | B11 | Admin role/permission matrix — 2b-3 part implemented (see above); later modules add theirs | 2b-4+ |
 | CAT-1 | `catalog_manager` role proposal (B11 continuation); product images/uploads (T6), SEO fields and per-type attribute schemas deferred (flat bounded `attrs` only) | Phase 3/4 |
+| INV-1 | Returned/refunded code handling (SOLD→VOID only exists as a transition, no API), supplier cost/COGS on batches (D10), code-expiry dates, bulk void by batch, reconciliation job schedule | 2b-7/2b-9, D10 |
 | RET-1 | Retention policy for sessions, OTP challenges, rate-limit counters, recovery records, audit (no purge exists) | before launch |
 | HTTP-1 | HTTP routes, real cookie integration (`__Host-`, HttpOnly, Secure, SameSite=Lax), CSRF/Origin enforcement, client-IP derivation for `clientKey` | Phase 4 |
 | X2 | Production SMS provider (OTP cannot be delivered in production until chosen; `SmsProvider` port + fail-closed `NullSmsProvider` exist) | launch |
