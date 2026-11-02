@@ -268,3 +268,9 @@ export async function verifyInventory(db: Database | Tx): Promise<IntegrityFindi
       where v.s <> (select count(*) from digital_codes c where c.variant_id = v.variant_id and c.status = 'AVAILABLE')`);
   return out;
 }
+
+/** Which sold code backs an order item (for fulfilment to record the delivery). Returns the opaque code id only — never any secret. */
+export async function getSoldCodeRef(db: Database | Tx, orderItemRef: string): Promise<string | null> {
+  const r = first<{ id: string }>(await db.execute(sql`select id from digital_codes where order_item_ref = ${orderItemRef} and status = 'SOLD'`));
+  return r?.id ?? null;
+}

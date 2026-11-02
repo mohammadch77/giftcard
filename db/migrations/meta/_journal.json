@@ -127,6 +127,20 @@
       "when": 1793617121917,
       "tag": "0017_payments_wallet_guards",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1793618075273,
+      "tag": "0018_suppliers_fulfillment_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1793618076204,
+      "tag": "0019_suppliers_fulfillment_guards",
+      "breakpoints": true
     }
   ]
 }

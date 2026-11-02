@@ -20,7 +20,7 @@ D1 money unit (Rial) · D2 ORM (Drizzle) · D3 login (mobile OTP; email attachab
 | B4 | Discount stacking policy (DATABASE_DESIGN §13 proposal). | |
 | B5 | Wallet rules: top-up min/max (**no default exists; top-ups are refused until `WALLET_TOPUP_MIN_RIAL/MAX_RIAL` are set — 2b-6**); confirm **no cash-out** (none exists; major legal/AML implications). | before launch |
 | B6 | Ticket reopen window, SLA, attachment limits. | |
-| B7 | Show delivered secrets on-site only (recommended) or also by SMS/email? | |
+| B7 | Show delivered secrets on-site only (recommended) or also by SMS/email? (2b-7: reveal is on-site only, logged; admin reveal permission exists but is granted to nobody.) | |
 | B8 | Per-order / new-account spend caps and velocity thresholds. | SECURITY §11 |
 | B10 | Four-eyes approval thresholds for ledger adjustments / refunds. (2b-6: ALL wallet adjustments currently need two admins — thresholds would only relax this.) | |
 | B11 | Admin roles and permission matrix. **2b-3 part DONE** (owner / security_admin / support_agent, identity.* only — DECISIONS I-4). Open: roles/permissions of later modules (catalog, inventory, fulfilment, finance, …), each added in its own step. | |
@@ -33,7 +33,7 @@ D1 money unit (Rial) · D2 ORM (Drizzle) · D3 login (mobile OTP; email attachab
 |---|---|---|
 | X1 | Payment gateway choice + merchant approval + official documentation + sandbox credentials | real `PaymentGateway` adapter, `PAYMENT_INTEGRATION.md` |
 | X2 | SMS provider choice + docs/credentials | real `SmsProvider`, production OTP |
-| X3 | Supplier(s) + authoritative API documentation | real `SupplierAdapter`, `SUPPLIER_INTEGRATION.md` |
+| X3 | Supplier(s) + authoritative API documentation. **2b-7 delivered only the GENERIC port + test double; nothing is verified against a real supplier.** Needed per supplier: auth, idempotency guarantee (`idempotentSubmit`), status-query semantics (is NOT_FOUND conclusive?), whether the listing is complete, whether codes are returned, currency/units of prices, rate limits, timeouts | real `SupplierAdapter`, `SUPPLIER_INTEGRATION.md` |
 
 ## Technical (low-risk, decided at scaffold time)
 | ID | Question |
@@ -65,6 +65,7 @@ See `SECURITY.md §12`: sanctions and publisher ToS for foreign gaming products,
 | CAT-1 | `catalog_manager` role proposal (B11 continuation); product images/uploads (T6), SEO fields and per-type attribute schemas deferred (flat bounded `attrs` only) | Phase 3/4 |
 | INV-1 | Returned/refunded code handling (SOLD→VOID only exists as a transition, no API), supplier cost/COGS on batches (D10), code-expiry dates, bulk void by batch, reconciliation job schedule | 2b-7/2b-9, D10 |
 | PAY-1 | **D10 sub-decision blocking order payments:** wallet/gateway order payment credit account — `CUSTOMER_PREPAYMENTS` (Mode B) vs `SALES_REVENUE` (Mode A); manual resolution of NEEDS_REVIEW payments (B12/B13); real gateway docs (X1); gateway key/refund capability | 2b-8/2b-9 |
+| SUP-1 | Supplier cost → COGS/pricing policy (D10), supplier prepaid/payable accounting, task cancellation on refund (2b-9), scheduler for `sweepStuckSubmissions` / reconciliation / `sweepExpired` / `listVerificationDue` workers, SSRF-safe outbound host allow-list when the first real adapter exists | 2b-8/2b-9, D10, X3 |
 | RET-1 | Retention policy for sessions, OTP challenges, rate-limit counters, recovery records, audit (no purge exists) | before launch |
 | HTTP-1 | HTTP routes, real cookie integration (`__Host-`, HttpOnly, Secure, SameSite=Lax), CSRF/Origin enforcement, client-IP derivation for `clientKey` | Phase 4 |
 | X2 | Production SMS provider (OTP cannot be delivered in production until chosen; `SmsProvider` port + fail-closed `NullSmsProvider` exist) | launch |
