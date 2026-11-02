@@ -47,6 +47,10 @@ const baseSchema = z.object({
   DEV_PEPPER_V1: key32,
   DEV_PEPPER_V2: key32,
 
+  // Wallet top-up limits (B5 is OPEN: NO default exists). Unset = top-ups fail closed (WALLET_LIMITS_NOT_CONFIGURED).
+  WALLET_TOPUP_MIN_RIAL: z.coerce.number().int().positive().optional(),
+  WALLET_TOPUP_MAX_RIAL: z.coerce.number().int().positive().optional(),
+
   // Worker / outbox tuning (platform, no business meaning).
   OUTBOX_POLL_INTERVAL_MS: z.coerce.number().int().min(100).max(60_000).default(1000),
   OUTBOX_BATCH_SIZE: z.coerce.number().int().min(1).max(1000).default(20),

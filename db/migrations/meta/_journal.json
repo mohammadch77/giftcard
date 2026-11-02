@@ -113,6 +113,20 @@
       "when": 1793616156326,
       "tag": "0015_inventory_guards",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1793617121002,
+      "tag": "0016_payments_wallet_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1793617121917,
+      "tag": "0017_payments_wallet_guards",
+      "breakpoints": true
     }
   ]
 }

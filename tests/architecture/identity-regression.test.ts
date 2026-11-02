@@ -37,6 +37,8 @@ const APPLIED: Record<string, string> = {
   "0011_identity_guards.sql": "889ccd5ae52363de49e1e8d190b64d1e52c9c9bd2ecb42e7e0d6e1c37859e5e4",
   "0012_catalog_tables.sql": "ee0d547eed8e78bc4a31250ea07fdef39a048a40c1f5ea82d8b517dc7e7dd13b",
   "0013_catalog_guards.sql": "f32b1698ffd24e2fe19ee860ae6b65278590e01ddc863a1ae905416eddc3bb7d",
+  "0014_inventory_tables.sql": "4f16cf754789d4d7bfee1de44216786e0f7c7b22836d1f0524e1accf860925f6",
+  "0015_inventory_guards.sql": "d3153387ebce321a43ba881747b45ab8a27b50e9a2602240dd307a8a081b5d5e",
 };
 
 describe("applied migrations are immutable", () => {

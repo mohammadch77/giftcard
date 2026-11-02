@@ -18,11 +18,11 @@ D1 money unit (Rial) · D2 ORM (Drizzle) · D3 login (mobile OTP; email attachab
 | B2 | (C-2 allows GAME_ACCOUNT → AUTO_CODE/MANUAL only.) Game accounts: pre-loaded stock (→ `digital_codes(ACCOUNT)`) or created per order (→ manual task)? Account-sharing/ToS risk acceptance? | |
 | B3 | Reservation TTL (technical default 15 min, bounds 60–3600 s, supplied by the caller — implemented in 2b-5) and cart expiry. Needs your value before launch. | |
 | B4 | Discount stacking policy (DATABASE_DESIGN §13 proposal). | |
-| B5 | Wallet rules: top-up min/max; confirm **no cash-out** (cash-out has major legal/AML implications). | |
+| B5 | Wallet rules: top-up min/max (**no default exists; top-ups are refused until `WALLET_TOPUP_MIN_RIAL/MAX_RIAL` are set — 2b-6**); confirm **no cash-out** (none exists; major legal/AML implications). | before launch |
 | B6 | Ticket reopen window, SLA, attachment limits. | |
 | B7 | Show delivered secrets on-site only (recommended) or also by SMS/email? | |
 | B8 | Per-order / new-account spend caps and velocity thresholds. | SECURITY §11 |
-| B10 | Four-eyes approval thresholds for ledger adjustments / refunds. | |
+| B10 | Four-eyes approval thresholds for ledger adjustments / refunds. (2b-6: ALL wallet adjustments currently need two admins — thresholds would only relax this.) | |
 | B11 | Admin roles and permission matrix. **2b-3 part DONE** (owner / security_admin / support_agent, identity.* only — DECISIONS I-4). Open: roles/permissions of later modules (catalog, inventory, fulfilment, finance, …), each added in its own step. | |
 | B12 | **Refund rules (current policy is TEMPORARY; legal review required before it is final)** per product type and disclosure state (not delivered / delivered-unrevealed / revealed), time windows, who may override. **Requires business decision + legal review.** Current design only records the facts and uses safe placeholders. | DATABASE_DESIGN §10.2 |
 | SEC-KAT | **Tests IMPLEMENTED in 2b-3** (`tests/unit/crypto-kat.test.ts`). **Still a production gate:** it must be re-run against any real KeyProvider, which does not exist (D8). Original text: independent known-answer tests for AES-256-GCM, HMAC-SHA-256, AAD, key versions/rotation and auth-tag failures must be added and passed **before any production KeyProvider is connected** (blocks final production approval of the crypto, not the ledger). | before production crypto |
@@ -64,6 +64,7 @@ See `SECURITY.md §12`: sanctions and publisher ToS for foreign gaming products,
 | B11 | Admin role/permission matrix — 2b-3 part implemented (see above); later modules add theirs | 2b-4+ |
 | CAT-1 | `catalog_manager` role proposal (B11 continuation); product images/uploads (T6), SEO fields and per-type attribute schemas deferred (flat bounded `attrs` only) | Phase 3/4 |
 | INV-1 | Returned/refunded code handling (SOLD→VOID only exists as a transition, no API), supplier cost/COGS on batches (D10), code-expiry dates, bulk void by batch, reconciliation job schedule | 2b-7/2b-9, D10 |
+| PAY-1 | **D10 sub-decision blocking order payments:** wallet/gateway order payment credit account — `CUSTOMER_PREPAYMENTS` (Mode B) vs `SALES_REVENUE` (Mode A); manual resolution of NEEDS_REVIEW payments (B12/B13); real gateway docs (X1); gateway key/refund capability | 2b-8/2b-9 |
 | RET-1 | Retention policy for sessions, OTP challenges, rate-limit counters, recovery records, audit (no purge exists) | before launch |
 | HTTP-1 | HTTP routes, real cookie integration (`__Host-`, HttpOnly, Secure, SameSite=Lax), CSRF/Origin enforcement, client-IP derivation for `clientKey` | Phase 4 |
 | X2 | Production SMS provider (OTP cannot be delivered in production until chosen; `SmsProvider` port + fail-closed `NullSmsProvider` exist) | launch |
