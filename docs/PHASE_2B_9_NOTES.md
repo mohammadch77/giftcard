@@ -29,3 +29,8 @@ D10 accountant decision + posting policy class; B12 final refund policy (legal) 
 
 ## 7. Tests (2b-9)
 `tests/db/refunds.test.ts` (lifecycle, policy, authz, fail-closed matrix, gateway ambiguity, held-money paths, rollback injection, reconciliation), `tests/concurrency/refunds.test.ts` (duplicate requests, approval race, concurrent executes ×2), `tests/architecture/refunds-regression.test.ts` (privacy, D10, I/O outside transactions, test-double isolation, override not seeded, read-only reconciliation). Existing pins updated: migrations 0020–0023 hashes, owner permission seed.
+
+## 8. Post-commit verification notes
+- `FULFILLING → CANCELLED` exists only as an engine rule added in 0023 and is guarded by `orders_cancel_gate` (needs a COMPLETED refund). Test: "a paid order can only be CANCELLED through a completed refund" asserts the order is FULFILLING, raw SQL cancel ⇒ PO002, then a completed refund makes the same edge succeed (history FULFILLING→CANCELLED).
+- `orders.payment_status` stays `SUCCEEDED` after a refund (documented in STATE_MACHINES "Refund"; money was received and refunded, the cache records the payment, not the refund). Refund state is queryable from `refunds` (status, destination, amount, `external_outcome`, `ledger_txn_id`, `completed_at`; unique per order via `order_id`), `refund_status_history` and the ledger reversal; reconciliation's `PAID_ORDER_POSTING` / `REFUNDS_UNRESOLVED` jobs use exactly these. Reports must join `refunds`, not rely on `payment_status`.
+- Plan wording "unique active refund per item" ⇒ implemented per order (full-order only); plan migration names `0021_refunds/0022_reconciliation_findings` ⇒ actual `0022_refunds_tables` / `0023_refunds_guards` (0020–0021 were used by orders).

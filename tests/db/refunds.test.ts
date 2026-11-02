@@ -231,8 +231,12 @@ describe("fail-closed matrix (unapproved accounting / policy)", () => {
   });
   it("a paid order can only be CANCELLED through a completed refund (raw SQL), and a refund hold-resolution needs a completed refund", async () => {
     const { orderId } = await paidWalletOrder();
+    expect((await orderRow(f, orderId)).status).toBe("FULFILLING"); // manual item: the FULFILLING -> CANCELLED edge is the one under test
     expect(await sqlCode("select set_config('app.actor_id','x',false), set_config('app.reason','x',false)").then(() => sqlCode("update orders set status = 'CANCELLED' where id = $1", [orderId]))).toBe("PO002");
-    expect((await orderRow(f, orderId)).status).not.toBe("CANCELLED");
+    expect((await orderRow(f, orderId)).status).toBe("FULFILLING");
+    const id = await approved(orderId, "WALLET");
+    await executeRefund(bd(), adm("exec"), id); // only now is the same transition possible
+    expect((await q("select from_status, to_status from order_status_history where entity_id = $1 and to_status = 'CANCELLED'", [orderId]))[0]).toEqual({ from_status: "FULFILLING", to_status: "CANCELLED" });
     const hold = await q<{ id: string }>("select id from order_holds where resolved_at is null limit 1");
     if (hold[0]) expect(await sqlCode("update order_holds set resolved_at = now(), resolved_by = 'x', resolution = 'REFUND_WALLET', note = 'x' where id = $1", [hold[0].id])).not.toBe("ok");
   });
