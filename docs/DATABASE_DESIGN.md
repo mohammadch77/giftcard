@@ -331,3 +331,5 @@ Drizzle ORM is the data-access layer. PostgreSQL-specific features are **kept fi
 
 
 > **Implementation note (2b-3):** identity was implemented per `PHASE_2B_3_NOTES.md`. Deviations from §3: no `permissions` table (permissions are code, roles reference keys); `user_credentials` not created (no password in V1); `admin_totp` has a status machine and `admin_recovery_codes`/`mfa_recovery_requests` were added; sessions store `idle_expires_at`/`absolute_expires_at`, `mfa_verified_at`, `step_up_at`.
+
+> **Implementation note (2b-4):** catalog implemented per `PHASE_2B_4_NOTES.md`. Deviations from §4: no `attribute_schemas`/`product_images`/`seo` (deferred, CAT-1); `categories` use `parent_id` + trigger-enforced 4-level/no-cycle rule instead of a materialised `path`; `availability` column added; fulfilment compatibility is the data table `product_type_fulfillment`; `variant_price_history` is written only by a SECURITY DEFINER trigger.

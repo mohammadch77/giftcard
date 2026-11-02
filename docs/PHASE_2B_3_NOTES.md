@@ -1,4 +1,4 @@
-# PHASE_2B_3_NOTES.md — Identity (implemented)
+# PHASE_2B_3_NOTES.md — Identity (implemented, CI-confirmed: commit 8c0cd6f, run #7 success)
 
 Scope authorised as a whole (DECISIONS 2026-11-04). HTTP routes, real cookies, CSRF/Origin stay in Phase 4.
 

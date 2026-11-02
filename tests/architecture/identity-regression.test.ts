@@ -16,7 +16,7 @@ import * as transitions from "@/platform/transitions";
 
 /**
  * Regression guards for Phase 2b-3 ("no unintended change in unrelated modules"):
- *  1. applied migrations 0000–0009 are byte-for-byte unchanged (hashes taken from the committed 2b-2 state);
+ *  1. applied migrations 0000–0011 are byte-for-byte unchanged (hashes taken from the committed 2b-2 state);
  *  2. public runtime exports of audit, ledger and platform/* are a superset of the 2b-2 contract (additions allowed, removals fail);
  *  3. identity tables are private: no other module / platform code mentions them;
  *  4. the module dependency matrix did not gain edges for identity.
@@ -33,13 +33,15 @@ const APPLIED: Record<string, string> = {
   "0007_audit_ledger_tables.sql": "427d3f3610e93a5a8a921a43e6da772fa5240594b934eeb93e670e252cce93de",
   "0008_audit_guards.sql": "89d6c2e5a6caeda865c202c51b34abc6ca311f953940816deca8202c10c6bed4",
   "0009_ledger_guards.sql": "76bf8b47ff442f9f57ce4c0a8e3e2f2a6e8a1142527c15f612408970664a7c56",
+  "0010_identity_tables.sql": "1786615fe63bf9ab44cb20d0e542fea9bf13d26080f2d074f3ef0c0afba0593c",
+  "0011_identity_guards.sql": "889ccd5ae52363de49e1e8d190b64d1e52c9c9bd2ecb42e7e0d6e1c37859e5e4",
 };
 
 describe("applied migrations are immutable", () => {
   for (const [file, sha] of Object.entries(APPLIED)) {
     it(file, () => expect(createHash("sha256").update(readFileSync(path.join(repo, "db/migrations", file))).digest("hex")).toBe(sha));
   }
-  it("no other file claims a number below 0010 and numbering is contiguous", () => {
+  it("numbering is contiguous", () => {
     const files = readdirSync(path.join(repo, "db/migrations")).filter((f) => f.endsWith(".sql")).sort();
     files.forEach((f, i) => expect(f.startsWith(String(i).padStart(4, "0"))).toBe(true));
   });

@@ -35,7 +35,11 @@ export type DomainErrorCode =
   | "IDENTITY_CONFLICT"
   | "IDENTITY_NOT_FOUND"
   | "MFA_STATE_INVALID"
-  | "RECOVERY_INVALID";
+  | "RECOVERY_INVALID"
+  | "CATALOG_INVALID"
+  | "CATALOG_NOT_FOUND"
+  | "CATALOG_CONFLICT"
+  | "CATALOG_NOT_SELLABLE";
 
 export class DomainError extends Error {
   readonly code: DomainErrorCode;

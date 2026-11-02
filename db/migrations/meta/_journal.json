@@ -85,6 +85,20 @@
       "when": 1793613995351,
       "tag": "0011_identity_guards",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1793615444388,
+      "tag": "0012_catalog_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1793615481345,
+      "tag": "0013_catalog_guards",
+      "breakpoints": true
     }
   ]
 }
