@@ -70,3 +70,7 @@ Status: **open, gates production use of the cryptography** (owner decision of 20
 4. **Key versions and rotation:** golden-file tests that an envelope written under KEK v1 remains readable after rotation to v2 and after re-wrap (fixtures committed as synthetic, non-secret test data).
 5. **Authentication-tag failures:** truncated/flipped/zero tags and wrong nonce lengths must fail with `DECRYPT_FAILED` and never return partial plaintext.
 This does **not** block starting the ledger (2b-2). It blocks the final approval of the cryptography for production.
+
+
+### 8.1 Status after 2b-3
+Known-answer tests are implemented in `tests/unit/crypto-kat.test.ts`: AES-256-GCM (GCM spec test cases 13–16, incl. AAD and tag-flip rejection), HMAC-SHA-256 (RFC 4231 case 2 and a 32-byte-key vector computed with a from-scratch HMAC), KEK-wrap and envelope blobs built independently from the documented layouts (AAD binding, key-version binding, tag failures). The task is **not closed**: it must be repeated against the real KeyProvider (D8) before production use, and the vectors only prove the primitives and formats, not the custody.

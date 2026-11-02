@@ -328,3 +328,6 @@ Drizzle ORM is the data-access layer. PostgreSQL-specific features are **kept fi
 - **`SELECT … FOR UPDATE SKIP LOCKED`** and the reservation/ledger functions are called via Drizzle's `sql` template (parameterised) inside `db.transaction(...)`; whether the query builder's locking clause is used directly is verified at scaffold time. The tested SQL in `docs/db-prototypes/` is the reference.
 - CI job: apply all migrations to a clean PostgreSQL, run the SQL test suite (this prototype suite grows into it), and fail if the Drizzle schema and the migrated database drift.
 - The application DB role is non-owner with DML-only grants (no UPDATE/DELETE on append-only tables).
+
+
+> **Implementation note (2b-3):** identity was implemented per `PHASE_2B_3_NOTES.md`. Deviations from §3: no `permissions` table (permissions are code, roles reference keys); `user_credentials` not created (no password in V1); `admin_totp` has a status machine and `admin_recovery_codes`/`mfa_recovery_requests` were added; sessions store `idle_expires_at`/`absolute_expires_at`, `mfa_verified_at`, `step_up_at`.

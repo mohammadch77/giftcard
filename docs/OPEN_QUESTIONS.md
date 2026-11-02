@@ -23,9 +23,9 @@ D1 money unit (Rial) · D2 ORM (Drizzle) · D3 login (mobile OTP; email attachab
 | B7 | Show delivered secrets on-site only (recommended) or also by SMS/email? | |
 | B8 | Per-order / new-account spend caps and velocity thresholds. | SECURITY §11 |
 | B10 | Four-eyes approval thresholds for ledger adjustments / refunds. | |
-| B11 | Admin roles and permission matrix. | |
+| B11 | Admin roles and permission matrix. **2b-3 part DONE** (owner / security_admin / support_agent, identity.* only — DECISIONS I-4). Open: roles/permissions of later modules (catalog, inventory, fulfilment, finance, …), each added in its own step. | |
 | B12 | **Refund rules (current policy is TEMPORARY; legal review required before it is final)** per product type and disclosure state (not delivered / delivered-unrevealed / revealed), time windows, who may override. **Requires business decision + legal review.** Current design only records the facts and uses safe placeholders. | DATABASE_DESIGN §10.2 |
-| SEC-KAT | **OPEN security task:** independent known-answer tests for AES-256-GCM, HMAC-SHA-256, AAD, key versions/rotation and auth-tag failures must be added and passed **before any production KeyProvider is connected** (blocks final production approval of the crypto, not the ledger). | before production crypto |
+| SEC-KAT | **Tests IMPLEMENTED in 2b-3** (`tests/unit/crypto-kat.test.ts`). **Still a production gate:** it must be re-run against any real KeyProvider, which does not exist (D8). Original text: independent known-answer tests for AES-256-GCM, HMAC-SHA-256, AAD, key versions/rotation and auth-tag failures must be added and passed **before any production KeyProvider is connected** (blocks final production approval of the crypto, not the ledger). | before production crypto |
 | B13 | Is a refund to the original gateway required, or is wallet-credit refund acceptable? | depends on gateway capability (unknown) |
 
 ## External dependencies (blocked until the owner provides them)
@@ -43,7 +43,7 @@ D1 money unit (Rial) · D2 ORM (Drizzle) · D3 login (mobile OTP; email attachab
 | T4 | Hash-chained audit log? |
 | T5 | Error monitoring: Sentry SaaS / self-hosted / none (reachability from Iran). |
 | T6 | Object storage: local disk behind interface vs self-hosted MinIO. |
-| T7 | Custom OTP module vs Auth.js credentials flow (leaning custom). |
+| T7 | ~~Custom OTP module vs Auth.js~~ **RESOLVED in 2b-3: custom Identity module.** |
 | T8 | ~~Verify at scaffold~~ **DONE in Phase 2a** (see TECH_STACK): custom migrations, `skip locked`, CHECK, drift check verified. |
 
 ## Legal / compliance (owner + local counsel; no conclusions in these docs)
@@ -61,4 +61,7 @@ See `SECURITY.md §12`: sanctions and publisher ToS for foreign gaming products,
 | ID | Item | Needed by |
 |---|---|---|
 | CI | Branch protection/required check, SHA-pinned actions, audit step (CI run #1 passed) | 2b-1a |
-| B11 | Default admin role/permission matrix — will be proposed in the 2b-3 step plan | 2b-3 |
+| B11 | Admin role/permission matrix — 2b-3 part implemented (see above); later modules add theirs | 2b-4+ |
+| RET-1 | Retention policy for sessions, OTP challenges, rate-limit counters, recovery records, audit (no purge exists) | before launch |
+| HTTP-1 | HTTP routes, real cookie integration (`__Host-`, HttpOnly, Secure, SameSite=Lax), CSRF/Origin enforcement, client-IP derivation for `clientKey` | Phase 4 |
+| X2 | Production SMS provider (OTP cannot be delivered in production until chosen; `SmsProvider` port + fail-closed `NullSmsProvider` exist) | launch |

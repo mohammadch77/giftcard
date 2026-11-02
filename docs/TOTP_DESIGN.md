@@ -26,3 +26,6 @@ TOTP is **mandatory for every administrator/staff account before the V1 release*
 
 ## 4. Risks if skipped
 Privileged accounts protected only by SMS OTP: SIM-swap or SMS-provider compromise would expose code reveal and ledger/refund actions. Mitigations without TOTP: mandatory step-up OTP per sensitive action, short admin sessions, IP allow-list, four-eyes on money actions, alerting.
+
+
+> **Status (2b-3):** implemented as designed in `src/modules/identity` — see `PHASE_2B_3_NOTES.md`. Deviations: the authenticator row has its own status machine (PENDING/ACTIVE/REPLACED) instead of a single mutable row so that nothing is deleted; `last_used_step` is advanced by a conditional UPDATE (replay-proof under concurrency).

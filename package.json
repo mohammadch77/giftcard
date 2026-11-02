@@ -18,6 +18,7 @@
     "db:generate:custom": "drizzle-kit generate --custom",
     "db:migrate": "tsx --env-file-if-exists=.env scripts/migrate.ts",
     "db:drift": "tsx scripts/check-drift.ts",
+    "identity:bootstrap-owner": "tsx --env-file-if-exists=.env scripts/bootstrap-owner.ts",
     "test": "npm run test:unit && npm run test:db && npm run test:concurrency",
     "test:unit": "vitest run --project unit",
     "test:db": "vitest run --project db",
