@@ -129,3 +129,6 @@ The repository is empty, so there is nothing to conflict with. ORM = Drizzle (de
 
 ## 11. Out of scope for v1 (explicit)
 Marketplace/vendors, microservices, Kubernetes, Docker requirement, event streaming, search engine (use Postgres FTS/`pg_trgm`), multi-currency FX, mobile app.
+
+## 12. Admin settings ownership (approved 2026-11-11, ADM-1 — not implemented)
+Configuration is owned by the module it governs (e.g. orders: reservation TTL; wallet: top-up limits; payments/suppliers/notifications: provider activation and priority) and exposed through ONE future admin interface. There is no global generic settings table. Details and invariants: `docs/ADMIN_SETTINGS_ARCHITECTURE.md`.
