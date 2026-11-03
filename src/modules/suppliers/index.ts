@@ -7,6 +7,7 @@
 export const MODULE_NAME = "suppliers" as const;
 export { createSupplier, deactivateRoute, getRoutes, getSupplierAdmin, mapVariantToSupplierProduct, setSupplierCredentials, updateSupplier } from "./application/admin";
 export type { RouteView, SupplierAdminContext } from "./application/admin";
+export { supplierVariantUsage } from "./application/usage";
 export { syncSupplierProducts } from "./application/sync";
 export type { SyncResult } from "./application/sync";
 export {

@@ -41,7 +41,7 @@ Launch is blocked until every row above is implemented, tested and reviewed — 
 | D10 `OrderPaymentPostingPolicy` (`CUSTOMER_PREPAYMENTS`, revenue-on-delivery, supplier COGS, refund reversals) | Phase 3, after accountant validation | EXTERNAL_VALIDATION_REQUIRED |
 | Notifications (B7: ready-notices only, no secrets), SMS primary + fallback (X2) | Phase 3 | IMPLEMENTATION_PENDING |
 | Workers/schedulers (ORD-1, OPS-3 daily reconciliation, refund retries) and worker health view | Phase 3 (jobs) → Phase 4 (view) | IMPLEMENTATION_PENDING |
-| Catalog extensions (B1 games/platforms, B2 attribute schema, C-2 tightening + protected method change), OPS-2 code expiry | Phase 3 | IMPLEMENTATION_PENDING |
+| Catalog extensions (B1 games/platforms, B2 attribute schema, C-2 tightening + protected method change), OPS-2 code expiry — **IMPLEMENTED in P1-B**; open: C-2b mapping of DIGITAL_SERVICE/OTHER, B2 legal/ToS, OPS-2 follow-ups, scheduling of the expiry sweeper | Phase 3 | DONE (P1-B) — owner/legal inputs outstanding |
 | B12 order-time policy snapshot — **IMPLEMENTED in P1-A**; defect/duplicate-payment review flows (P1-C) and the final policy after legal review still pending | Phase 3 | EXTERNAL_VALIDATION_REQUIRED |
 | Real gateway, SMS, supplier adapters; production KMS KeyProvider; RET-1 periods | when X1/X2/X3/D8/legal inputs exist | PRODUCTION_BLOCKER |
 
@@ -62,6 +62,6 @@ Launch is blocked until every row above is implemented, tested and reviewed — 
 | Sub-phase | Scope | Status |
 |---|---|---|
 | **P1-A** | ADM-1 settings foundation · B3 TTL (900 s) · B5 limits + Asia/Tehran daily limit · order-time policy snapshots (refund policy version, TTL, fulfilment rules) + backfill | **IMPLEMENTED** — migrations 0024/0025; details in DECISIONS (fifteenth review) |
-| P1-B | C-2 tightening + protected method change · B1/B2 catalog extensions · OPS-2 code expiry | not started — needs separate approval |
+| **P1-B** | C-2 matrix + protected method change (usage probes, change log, DB-enforced) · B1/B2 games, platforms, regions, typed game-account attributes · OPS-2 optional code expiry + sweeper | **IMPLEMENTED (migrations 0026/0027)** — awaiting review; see DECISIONS sixteenth review |
 | P1-C | B10 thresholds · B12/B13 review workflows | not started — needs separate approval |
 | P1-D | D10 `OrderPaymentPostingPolicy` | not started — blocked on accountant validation |

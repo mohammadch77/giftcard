@@ -30,7 +30,7 @@ describe("catalog permissions through identity", () => {
     const ctx = bind(o.actor);
     const brand = await createBrand(ctx, { slug: uniq("b"), name: "B" });
     const cat = await createCategory(ctx, { slug: uniq("c"), name: "C" });
-    const p = await createProduct(ctx, { type: "GIFT_CARD", brandId: brand.id, categoryId: cat.id, slug: uniq("p"), name: "P" });
+    const p = await createProduct(ctx, { type: "DIGITAL_SERVICE", brandId: brand.id, categoryId: cat.id, slug: uniq("p"), name: "P" });
     const v = await createVariant(ctx, p.id, { sku: "S1", name: "S1", fulfillmentMethod: "MANUAL", price: 1000 });
     await changePrice(ctx, v.id, { price: 2000, reason: "repricing test" });
     const a = (await f.t.pool.query("select actor_type, actor_id from audit_logs where action = 'catalog.variant.price_changed' order by id desc limit 1")).rows[0];
@@ -43,7 +43,7 @@ describe("catalog permissions through identity", () => {
     const ctx = bind(o.actor);
     const brand = await createBrand(ctx, { slug: uniq("b"), name: "B" });
     const cat = await createCategory(ctx, { slug: uniq("c"), name: "C" });
-    const p = await createProduct(ctx, { type: "GIFT_CARD", brandId: brand.id, categoryId: cat.id, slug: uniq("p"), name: "P" });
+    const p = await createProduct(ctx, { type: "DIGITAL_SERVICE", brandId: brand.id, categoryId: cat.id, slug: uniq("p"), name: "P" });
     f.clock.advance(6 * 60_000);
     await createBrand(ctx, { slug: uniq("b"), name: "again" }); // non-sensitive: still fine
     expect(await errCode(createVariant(ctx, p.id, { sku: "S2", name: "S2", fulfillmentMethod: "MANUAL", price: 1000 }))).toBe("AUTH_STEP_UP_REQUIRED");

@@ -82,7 +82,7 @@ describe("B3 order settings are concurrency-safe", () => {
 
   it("checkouts racing with TTL changes: every order is internally consistent (snapshot TTL = the TTL of the version it names = its real expiry)", async () => {
     const { variantId } = await stockedVariant(o, 30);
-    const changes = [120, 600, 1800, 3000, 900].map((t, i) => setReservationTtl(admin(`racer-${i}`), { reservationTtlSeconds: t, reason: `race change to ${t} seconds` }));
+    const changes = [120, 600, 1800, 3000, 960].map((t, i) => setReservationTtl(admin(`racer-${i}`), { reservationTtlSeconds: t, reason: `race change to ${t} seconds` }));
     const orders = Array.from({ length: 12 }, () => gatewayCheckout(o, userId(), [{ variantId, quantity: 1 }]));
     const res = await settle([...changes, ...orders]);
     expect(res.filter((r) => r.status === "rejected")).toEqual([]);

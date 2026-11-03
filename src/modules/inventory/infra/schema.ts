@@ -17,6 +17,8 @@ export const inventoryBatches = pgTable(
     codeCount: integer("code_count").notNull(),
     duplicateCount: integer("duplicate_count").notNull().default(0),
     note: text("note"),
+    /** P1-B (OPS-2): expiry the supplier gave for the whole batch (optional; a code may carry its own). */
+    expiresAt: ts("expires_at"),
     createdBy: text("created_by").notNull(),
     createdAt: ts("created_at").notNull(),
   },
@@ -86,12 +88,14 @@ export const digitalCodes = pgTable(
     /** Opaque per-unit reference of the order item the code was sold to (FK added in 2b-8). */
     orderItemRef: text("order_item_ref"),
     soldAt: ts("sold_at"),
+    /** P1-B (OPS-2): supplier-provided expiry (NULL = none known). Set at import, immutable; an expired code is never reserved or sold. */
+    expiresAt: ts("expires_at"),
     publicAttrs: jsonb("public_attrs").notNull().default(sql`'{}'::jsonb`),
     createdAt: ts("created_at").notNull(),
     updatedAt: ts("updated_at").notNull(),
   },
   (t) => [
-    check("digital_codes_status", sql`${t.status} in ('AVAILABLE','RESERVED','SOLD','VOID','QUARANTINED')`),
+    check("digital_codes_status", sql`${t.status} in ('AVAILABLE','RESERVED','SOLD','VOID','QUARANTINED','EXPIRED')`),
     check("digital_codes_payload_kind", sql`${t.payloadKind} in ('CODE','ACCOUNT')`),
     check("digital_codes_fp_len", sql`octet_length(${t.codeFp}) = 32`),
     check(
@@ -99,8 +103,10 @@ export const digitalCodes = pgTable(
       sql`(${t.status} = 'AVAILABLE' and ${t.reservationId} is null and ${t.orderItemRef} is null and ${t.reservedUntil} is null)
        or (${t.status} = 'RESERVED' and ${t.reservationId} is not null and ${t.orderItemRef} is null and ${t.reservedUntil} is not null)
        or (${t.status} = 'SOLD' and ${t.orderItemRef} is not null and ${t.soldAt} is not null)
-       or (${t.status} in ('VOID','QUARANTINED'))`,
+       or (${t.status} in ('VOID','QUARANTINED','EXPIRED'))`,
     ),
+    check("digital_codes_expired_has_expiry", sql`${t.status} <> 'EXPIRED' or ${t.expiresAt} is not null`),
+    index("digital_codes_expiry_idx").on(t.expiresAt).where(sql`${t.expiresAt} is not null and ${t.status} in ('AVAILABLE','QUARANTINED')`),
     check("digital_codes_attrs", sql`jsonb_typeof(${t.publicAttrs}) = 'object' and pg_column_size(${t.publicAttrs}) <= 2048`),
     uniqueIndex("digital_codes_fp_uq").on(t.hmacVersion, t.codeFp),
     // A code can belong to at most ONE order item, whatever the application does.
@@ -138,7 +144,7 @@ export const inventoryMovements = pgTable(
     createdAt: ts("created_at").notNull(),
   },
   (t) => [
-    check("inventory_movements_type", sql`${t.type} in ('IMPORT','RESERVE','RELEASE','EXPIRE','SELL','VOID','QUARANTINE','UNQUARANTINE','ADJUST')`),
+    check("inventory_movements_type", sql`${t.type} in ('IMPORT','RESERVE','RELEASE','EXPIRE','SELL','VOID','QUARANTINE','UNQUARANTINE','ADJUST','CODE_EXPIRE')`),
     index("inventory_movements_variant_idx").on(t.variantId, t.id),
     index("inventory_movements_reservation_idx").on(t.reservationId),
   ],

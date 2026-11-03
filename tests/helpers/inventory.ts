@@ -26,7 +26,7 @@ export function invCtx(f: InventoryFixture, allowed: "all" | string[] = "all", a
 }
 
 /** A published, sellable variant with the given fulfilment method (and product type). */
-export async function sellableVariant(f: InventoryFixture, method: FulfillmentMethod = "AUTO_CODE", type: ProductType = "GIFT_CARD", publish = true): Promise<string> {
+export async function sellableVariant(f: InventoryFixture, method: FulfillmentMethod = "AUTO_CODE", type: ProductType = method === "AUTO_CODE" ? "GIFT_CARD" : "DIGITAL_SERVICE", publish = true): Promise<string> {
   const c = adminCtx(f);
   const p = await createProduct(c, { type, brandId: f.base.brand, categoryId: f.base.category, slug: uniq("p"), name: "P" });
   const v = await createVariant(c, p.id, { sku: uniq("V"), name: "V", fulfillmentMethod: method, price: 1_000_000 });

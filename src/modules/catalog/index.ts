@@ -6,13 +6,14 @@
  */
 export const MODULE_NAME = "catalog" as const;
 export {
-  archiveBrandOrCategory, changePrice, createBrand, createCategory, createProduct, createRegion, createVariant, getProductAdmin, setProductStatus,
-  setVariantAvailability, setVariantStatus, updateProduct, updateVariant,
+  REQUIRED_USAGE_SOURCES, archiveBrandOrCategory, archiveGameOrPlatform, changeFulfillmentMethod, changePrice, createBrand, createCategory, createGame, createPlatform,
+  createProduct, createRegion, createVariant, getProductAdmin, linkGamePlatform, linkGamePlatformRegion, listIncompatibleVariants, setGameAccountAttributes,
+  setProductStatus, setVariantAvailability, setVariantStatus, updateProduct, updateVariant,
 } from "./application/admin";
-export type { AdminContext, PriceChange } from "./application/admin";
+export type { AdminContext, PriceChange, VariantUsageProbe, VariantUsageReport } from "./application/admin";
 export { getFulfillmentCompatibility, getPriceableVariants, getVariantSnapshot, listPublished } from "./application/queries";
-export type { ListFilters, PriceableVariant, VariantSnapshot } from "./application/queries";
+export type { GameAccountAttributes, ListFilters, PriceableVariant, SnapshotOptions, VariantSnapshot } from "./application/queries";
 export { CATALOG_PERMISSIONS } from "./domain/permissions";
 export type { CatalogPermissionDef } from "./domain/permissions";
-export { FULFILLMENT_COMPATIBILITY, FULFILLMENT_METHODS, PRODUCT_TYPES, PUBLICATION_TRANSITIONS } from "./domain/rules";
+export { FULFILLMENT_COMPATIBILITY, FULFILLMENT_METHODS, PRODUCT_TYPES, PUBLICATION_TRANSITIONS, looksLikeCredentialKey } from "./domain/rules";
 export type { Availability, FulfillmentMethod, ProductType, PublicationStatus } from "./domain/rules";

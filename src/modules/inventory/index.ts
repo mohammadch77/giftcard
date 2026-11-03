@@ -5,8 +5,8 @@
  * External calls never happen inside a database transaction here (KeyProvider work is done before/after).
  */
 export const MODULE_NAME = "inventory" as const;
-export { adjustStock, getStock, importCodes, setCodeStatus } from "./application/admin";
-export type { ImportResult, InventoryAdminContext } from "./application/admin";
+export { adjustStock, expireDueCodes, getStock, importCodes, inventoryVariantUsage, runCodeExpiry, setCodeStatus } from "./application/admin";
+export type { ExpiryRun, ImportResult, InventoryAdminContext } from "./application/admin";
 export { availability, consume, getReservationStatuses, getSoldCodeRef, markSold, release, reserve, sweepExpired, verifyInventory, withDeliverySecret } from "./application/reservations";
 export type { Availability, ConsumeOutcome, DeliveryRequest, IntegrityFinding, ReservationView, SoldAssignment } from "./application/reservations";
 export { INVENTORY_PERMISSIONS } from "./domain/permissions";

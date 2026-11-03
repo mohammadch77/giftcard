@@ -95,7 +95,7 @@ A reservation in `EXPIRED`/`RELEASED` is never revived. Late-payment recovery cr
 
 ## 8. Code (`digital_codes.status`)
 
-`AVAILABLE ↔ RESERVED → SOLD ■`; `AVAILABLE|RESERVED → VOID ■`; `AVAILABLE → QUARANTINED → AVAILABLE|VOID` (suspected bad batch). `SOLD` is never reversed except by an explicit audited admin `VOID`.
+`AVAILABLE ↔ RESERVED → SOLD ■`; `AVAILABLE|RESERVED → VOID ■`; `AVAILABLE → QUARANTINED → AVAILABLE|VOID` (suspected bad batch). `SOLD` is never reversed except by an explicit audited admin `VOID`. **P1-B (OPS-2):** `AVAILABLE|QUARANTINED → EXPIRED ■` (terminal) once the supplier-provided `expires_at` has passed — done only by the expiry sweeper, never for `RESERVED` or `SOLD` (a sold code stays `SOLD`; a reserved code must outlive its reservation, so it cannot expire while held). Counted stock has no per-unit status.
 
 
 ## Refund (implemented in 2b-9, machine `refund`)

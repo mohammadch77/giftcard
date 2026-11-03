@@ -10,4 +10,5 @@ export const CATALOG_PERMISSIONS: readonly CatalogPermissionDef[] = [
   { key: "catalog.products.manage", description: "Create and edit categories, brands, regions, products, variants (not prices, not publication)", sensitive: false },
   { key: "catalog.products.publish", description: "Publish, unpublish and archive products and variants", sensitive: true },
   { key: "catalog.prices.manage", description: "Set and change prices and sale prices", sensitive: true },
+  { key: "catalog.fulfillment.change", description: "Change the fulfilment method of an unpublished, unused variant (protected change)", sensitive: true },
 ];

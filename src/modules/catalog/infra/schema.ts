@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { bigint, char, check, customType, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { bigint, char, check, customType, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 /**
  * Catalog tables — private to the catalog module. Variants are the sellable unit.
@@ -76,11 +76,76 @@ export const productTypeFulfillment = pgTable(
   (t) => [uniqueIndex("product_type_fulfillment_uq").on(t.productType, t.method)],
 );
 
+/** P1-B (B1): games and platforms are first-class, admin-managed entities. Archived, never deleted. */
+export const games = pgTable(
+  "games",
+  {
+    id: uuid("id").primaryKey(),
+    slug: text("slug").notNull(),
+    name: text("name").notNull(),
+    status: text("status").notNull().default("ACTIVE"),
+    createdAt: ts("created_at").notNull(),
+    updatedAt: ts("updated_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("games_slug_uq").on(t.slug),
+    check("games_slug_format", sql`${t.slug} ~ ${SLUG} and char_length(${t.slug}) <= 80`),
+    check("games_name_len", sql`char_length(btrim(${t.name})) between 1 and 160`),
+    check("games_status", sql`${t.status} in ('ACTIVE','ARCHIVED')`),
+  ],
+);
+
+export const platforms = pgTable(
+  "platforms",
+  {
+    id: uuid("id").primaryKey(),
+    slug: text("slug").notNull(),
+    name: text("name").notNull(),
+    status: text("status").notNull().default("ACTIVE"),
+    createdAt: ts("created_at").notNull(),
+    updatedAt: ts("updated_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("platforms_slug_uq").on(t.slug),
+    check("platforms_slug_format", sql`${t.slug} ~ ${SLUG} and char_length(${t.slug}) <= 80`),
+    check("platforms_name_len", sql`char_length(btrim(${t.name})) between 1 and 120`),
+    check("platforms_status", sql`${t.status} in ('ACTIVE','ARCHIVED')`),
+  ],
+);
+
+/** Which platforms a game exists on. */
+export const gamePlatforms = pgTable(
+  "game_platforms",
+  {
+    gameId: uuid("game_id").notNull().references(() => games.id),
+    platformId: uuid("platform_id").notNull().references(() => platforms.id),
+    createdAt: ts("created_at").notNull(),
+  },
+  (t) => [primaryKey({ name: "game_platforms_pk", columns: [t.gameId, t.platformId] })],
+);
+
+/** Which regions a game is offered in on a given platform (the triple a variant may reference). */
+export const gamePlatformRegions = pgTable(
+  "game_platform_regions",
+  {
+    gameId: uuid("game_id").notNull(),
+    platformId: uuid("platform_id").notNull(),
+    regionId: uuid("region_id").notNull().references(() => regions.id),
+    createdAt: ts("created_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ name: "game_platform_regions_pk", columns: [t.gameId, t.platformId, t.regionId] }),
+    foreignKey({ name: "game_platform_regions_gp_fk", columns: [t.gameId, t.platformId], foreignColumns: [gamePlatforms.gameId, gamePlatforms.platformId] }),
+  ],
+);
+
 export const products = pgTable(
   "products",
   {
     id: uuid("id").primaryKey(),
     type: text("type").notNull(),
+    /** P1-B: optional first-class game reference (required for GAME_ACCOUNT before publication). */
+    gameId: uuid("game_id").references(() => games.id),
     brandId: uuid("brand_id").notNull().references(() => brands.id),
     categoryId: uuid("category_id").notNull().references(() => categories.id),
     slug: text("slug").notNull(),
@@ -110,6 +175,8 @@ export const productVariants = pgTable(
     sku: text("sku").notNull(),
     name: text("name").notNull(),
     regionId: uuid("region_id").references(() => regions.id),
+    /** P1-B: optional first-class platform reference (required for GAME_ACCOUNT before publication). */
+    platformId: uuid("platform_id").references(() => platforms.id),
     /** Face value of the foreign-currency product (descriptive only; never used in Rial arithmetic). */
     faceValue: bigint("face_value", { mode: "number" }),
     faceCurrency: char("face_currency", { length: 3 }),
@@ -140,6 +207,53 @@ export const productVariants = pgTable(
     check("variants_sale_window_needs_price", sql`${t.salePrice} is not null or (${t.saleStartsAt} is null and ${t.saleEndsAt} is null)`),
     check("variants_attrs_object", sql`jsonb_typeof(${t.attrs}) = 'object' and pg_column_size(${t.attrs}) <= 8192`),
     index("product_variants_published_idx").on(t.productId).where(sql`${t.status} = 'PUBLISHED'`),
+  ],
+);
+
+/**
+ * P1-B (B2): typed, PUBLIC descriptive attributes of a game-account variant. There is deliberately no column that can hold a
+ * credential: login data lives only in inventory (sealed) or in the manual-fulfilment secret path.
+ */
+export const gameAccountAttributes = pgTable(
+  "game_account_attributes",
+  {
+    variantId: uuid("variant_id").primaryKey().references(() => productVariants.id),
+    accountType: text("account_type").notNull(),
+    level: integer("level"),
+    includedItems: jsonb("included_items").notNull().default(sql`'[]'::jsonb`),
+    features: jsonb("features").notNull().default(sql`'[]'::jsonb`),
+    createdAt: ts("created_at").notNull(),
+    updatedAt: ts("updated_at").notNull(),
+  },
+  (t) => [
+    check("game_account_attributes_type", sql`${t.accountType} ~ '^[A-Z][A-Z0-9_]{1,29}$'`),
+    check("game_account_attributes_level", sql`${t.level} is null or ${t.level} between 0 and 100000`),
+    check("game_account_attributes_lists", sql`jsonb_typeof(${t.includedItems}) = 'array' and jsonb_typeof(${t.features}) = 'array' and jsonb_array_length(${t.includedItems}) <= 50 and jsonb_array_length(${t.features}) <= 30 and pg_column_size(${t.includedItems}) <= 8192 and pg_column_size(${t.features}) <= 4096`),
+  ],
+);
+
+/**
+ * P1-B (C-2): every change of a variant's fulfilment method is recorded here BEFORE the variant row changes (same transaction).
+ * The variants trigger refuses a method change that has no matching row of this transaction, so no code path can bypass it.
+ */
+export const variantFulfillmentChanges = pgTable(
+  "variant_fulfillment_changes",
+  {
+    id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+    variantId: uuid("variant_id").notNull().references(() => productVariants.id),
+    fromMethod: text("from_method").notNull(),
+    toMethod: text("to_method").notNull(),
+    reason: text("reason").notNull(),
+    actorId: text("actor_id").notNull(),
+    /** Usage facts read under the variant lock when the change was approved. */
+    usage: jsonb("usage").notNull(),
+    txid: bigint("txid", { mode: "number" }).notNull().default(sql`txid_current()`),
+    changedAt: ts("changed_at").notNull(),
+  },
+  (t) => [
+    check("variant_fulfillment_changes_methods", sql`${t.fromMethod} in ('AUTO_CODE','MANUAL','SUPPLIER_API') and ${t.toMethod} in ('AUTO_CODE','MANUAL','SUPPLIER_API') and ${t.fromMethod} <> ${t.toMethod}`),
+    check("variant_fulfillment_changes_reason", sql`char_length(btrim(${t.reason})) >= 10`),
+    index("variant_fulfillment_changes_variant_idx").on(t.variantId, t.id),
   ],
 );
 

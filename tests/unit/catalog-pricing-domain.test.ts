@@ -49,7 +49,8 @@ describe("classification, lifecycle and input validation", () => {
     }
     expect(() => assertCompatible("DIGITAL_SERVICE", "AUTO_CODE")).toThrow(expect.objectContaining({ code: "CATALOG_INVALID" }));
     expect(() => assertCompatible("GAME_ACCOUNT", "SUPPLIER_API")).toThrow();
-    expect(() => assertCompatible("GIFT_CARD", "SUPPLIER_API")).not.toThrow();
+    expect(() => assertCompatible("GIFT_CARD", "SUPPLIER_API")).toThrow(); // C-2 (P1-B): gift cards are automatic only
+    expect(() => assertCompatible("GIFT_CARD", "AUTO_CODE")).not.toThrow();
   });
   it("archived is terminal; nothing reaches NEW states", () => {
     expect(PUBLICATION_TRANSITIONS.ARCHIVED).toEqual([]);

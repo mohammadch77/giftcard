@@ -77,7 +77,7 @@ describe("hierarchy, classification and uniqueness", () => {
     const db: Record<string, string[]> = {};
     for (const r of rows) (db[r.product_type] ??= []).push(r.method);
     for (const [t, m] of Object.entries(FULFILLMENT_COMPATIBILITY)) expect(db[t]!.slice().sort(), t).toEqual([...m].sort());
-    expect(await code(updateVariant(c(), base.variant, { fulfillmentMethod: "SUPPLIER_API" }))).toBe("NO_ERROR");
+    expect(await code(updateVariant(c(), base.variant, { fulfillmentMethod: "SUPPLIER_API" }))).toBe("CATALOG_INVALID"); // not an updatable field any more (P1-B): see changeFulfillmentMethod
     expect(await f.app.pool.query("update product_type_fulfillment set method = 'MANUAL'").then(() => "ok", (e: unknown) => pgCode(e))).toBe("42501");
   });
   it("type, slug, sku and ids are immutable; the app role cannot delete anything", async () => {
@@ -94,7 +94,7 @@ describe("lifecycle and availability", () => {
     const base = await seedBase(c());
     expect(await code(setVariantStatus(c(), base.variant, "PUBLISHED", "before the product"))).toBe("CATALOG_INVALID");
     await setProductStatus(c(), base.product, "PUBLISHED", "launch product");
-    const free = await createVariant(c(), base.product, { sku: uniq("F"), name: "Free", fulfillmentMethod: "MANUAL", price: 0 });
+    const free = await createVariant(c(), base.product, { sku: uniq("F"), name: "Free", fulfillmentMethod: "AUTO_CODE", price: 0 });
     expect(await code(setVariantStatus(c(), free.id, "PUBLISHED", "zero price"))).toBe("CATALOG_INVALID");
     await setVariantStatus(c(), base.variant, "PUBLISHED", "launch variant");
     expect(await code(changePrice(c(), base.variant, { price: 0, reason: "free by mistake" }))).toBe("CATALOG_INVALID"); // published variant cannot drop to zero
@@ -219,7 +219,7 @@ describe("audit and reads", () => {
       expect(new Set([...p1.items, ...p2.items].map((x) => x.variantId)).size).toBe(4);
       expect((await listPublished(g.app.db, { categorySlug: "cards", type: "GIFT_CARD" })).items).toHaveLength(6);
       expect(JSON.stringify(all)).not.toMatch(/cost|supplier|secret|internal|password/i);
-      expect(Object.keys(all.items[0]!).sort()).toEqual(["attrs", "availability", "brand", "durationDays", "faceCurrency", "faceValue", "fulfillmentMethod", "name", "productId", "productName", "productSlug", "productType", "regionCode", "sellable", "sku", "variantId"]);
+      expect(Object.keys(all.items[0]!).sort()).toEqual(["accountAttributes", "attrs", "availability", "brand", "durationDays", "faceCurrency", "faceValue", "fulfillmentMethod", "game", "name", "platform", "productId", "productName", "productSlug", "productType", "regionCode", "sellable", "sku", "variantId"]);
       expect(await getVariantSnapshot(g.app.db, "not-a-uuid")).toBeNull();
       await expect(listPublished(g.app.db, { after: "x" })).rejects.toMatchObject({ code: "CATALOG_INVALID" });
     } finally {
@@ -259,7 +259,7 @@ describe("pricing quote", () => {
     expect((await quote(f.app.db, [{ variantId: base.variant, quantity: 100 }], now)).subtotal).toBe(1_000_000_000_000_000);
     const ids = [base.variant];
     for (let i = 0; i < 9; i++) {
-      const v = await createVariant(c(), base.product, { sku: uniq("M"), name: "m", fulfillmentMethod: "MANUAL", price: 10_000_000_000_000 });
+      const v = await createVariant(c(), base.product, { sku: uniq("M"), name: "m", fulfillmentMethod: "AUTO_CODE", price: 10_000_000_000_000 });
       await setVariantStatus(c(), v.id, "PUBLISHED", "launch variant");
       ids.push(v.id);
     }

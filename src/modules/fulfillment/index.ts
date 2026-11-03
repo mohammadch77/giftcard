@@ -6,6 +6,7 @@
  */
 export const MODULE_NAME = "fulfillment" as const;
 export { cancelTasksForOrder, claimManualTask, completeManualTask, createTasks, deliverAutoCodes, deliveryStatus, fulfillSupplierTask, getTask, listTasksAdmin, listTasksForOrder, withRevealedSecret } from "./application/fulfillment";
+export { fulfillmentVariantUsage } from "./application/usage";
 export type { FulfillDeps, FulfillmentAdminContext, RevealRequest, SupplierFulfillOutcome, TaskView } from "./application/fulfillment";
 export { FULFILLMENT_PERMISSIONS, REVEAL_LIMIT } from "./domain/types";
 export type { DisclosureState, FulfillmentMethod, FulfillmentPermissionDef, TaskStatus } from "./domain/types";

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { DomainError } from "@/platform/errors";
 
-export type CodeStatus = "AVAILABLE" | "RESERVED" | "SOLD" | "VOID" | "QUARANTINED";
+export type CodeStatus = "AVAILABLE" | "RESERVED" | "SOLD" | "VOID" | "QUARANTINED" | "EXPIRED";
 export type ReservationStatus = "ACTIVE" | "CONSUMED" | "RELEASED" | "EXPIRED";
 export type PayloadKind = "CODE" | "ACCOUNT";
 
@@ -32,10 +32,13 @@ export const reserveInput = z.strictObject({
 });
 export type ReserveInput = z.infer<typeof reserveInput>;
 
+/** OPS-2: an expiry is OPTIONAL everywhere (not every supplier provides one). A code may carry its own; otherwise the batch expiry applies. */
+export const importItem = z.union([z.string(), z.strictObject({ code: z.string(), expiresAt: z.date().nullable().optional() })]);
 export const importInput = z.strictObject({
   payloadKind: z.enum(["CODE", "ACCOUNT"]),
-  codes: z.array(z.string()).min(1).max(MAX_IMPORT_CODES),
+  codes: z.array(importItem).min(1).max(MAX_IMPORT_CODES),
   note: z.string().max(500).optional(),
+  expiresAt: z.date().nullable().optional(),
 });
 
 export function parse<T>(schema: z.ZodType<T>, input: unknown): T {

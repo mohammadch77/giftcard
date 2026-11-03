@@ -57,14 +57,23 @@ export interface VariantSnapshot {
   durationDays: number | null;
   fulfillmentMethod: FulfillmentMethod;
   attrs: Record<string, string | number | boolean>;
+  /** P1-B: first-class game / platform (null when the product is not tied to one) and, for GAME_ACCOUNT variants, the typed PUBLIC attributes. */
+  game: { slug: string; name: string } | null;
+  platform: { slug: string; name: string } | null;
+  accountAttributes: GameAccountAttributes | null;
   availability: Availability;
   sellable: boolean;
 }
 
+export interface GameAccountAttributes { accountType: string; level: number | null; includedItems: string[]; features: string[] }
+
 const SNAPSHOT_SELECT = sql`select v.id as variant_id, p.id as product_id, p.slug as product_slug, p.name as product_name, p.type as product_type, b.slug as brand_slug, b.name as brand_name,
   v.sku, v.name, r.code as region_code, v.face_value, v.face_currency, v.duration_days, v.fulfillment_method, v.attrs, v.availability,
+  g.slug as game_slug, g.name as game_name, pl.slug as platform_slug, pl.name as platform_name,
+  ga.account_type, ga.level as account_level, ga.included_items, ga.features,
   (v.status = 'PUBLISHED' and p.status = 'PUBLISHED' and v.availability = 'AVAILABLE') as sellable
-  from product_variants v join products p on p.id = v.product_id join brands b on b.id = p.brand_id left join regions r on r.id = v.region_id`;
+  from product_variants v join products p on p.id = v.product_id join brands b on b.id = p.brand_id left join regions r on r.id = v.region_id
+  left join games g on g.id = p.game_id left join platforms pl on pl.id = v.platform_id left join game_account_attributes ga on ga.variant_id = v.id`;
 
 function toSnapshot(x: Record<string, unknown>): VariantSnapshot {
   return {
@@ -72,14 +81,26 @@ function toSnapshot(x: Record<string, unknown>): VariantSnapshot {
     productType: x.product_type as ProductType, brand: { slug: x.brand_slug as string, name: x.brand_name as string }, sku: x.sku as string, name: x.name as string,
     regionCode: (x.region_code as string | null) ?? null, faceValue: num(x.face_value as string | number | null), faceCurrency: (x.face_currency as string | null) ?? null,
     durationDays: (x.duration_days as number | null) ?? null, fulfillmentMethod: x.fulfillment_method as FulfillmentMethod,
-    attrs: x.attrs as VariantSnapshot["attrs"], availability: x.availability as Availability, sellable: x.sellable as boolean,
+    attrs: x.attrs as VariantSnapshot["attrs"],
+    game: x.game_slug === null || x.game_slug === undefined ? null : { slug: x.game_slug as string, name: x.game_name as string },
+    platform: x.platform_slug === null || x.platform_slug === undefined ? null : { slug: x.platform_slug as string, name: x.platform_name as string },
+    accountAttributes:
+      x.account_type === null || x.account_type === undefined
+        ? null
+        : { accountType: x.account_type as string, level: (x.account_level as number | null) ?? null, includedItems: x.included_items as string[], features: x.features as string[] },
+    availability: x.availability as Availability, sellable: x.sellable as boolean,
   };
 }
 
 /** What orders will snapshot at purchase. Works for any state (history must keep resolving); check `sellable`. */
-export async function getVariantSnapshot(db: Database | Tx, variantId: string): Promise<VariantSnapshot | null> {
+export interface SnapshotOptions {
+  /** Lock the variant row FOR SHARE until the caller's transaction ends: a concurrent protected change (FOR UPDATE) then waits, and a reservation can never be built on a method that is being changed. */
+  lockShare?: boolean;
+}
+
+export async function getVariantSnapshot(db: Database | Tx, variantId: string, opts: SnapshotOptions = {}): Promise<VariantSnapshot | null> {
   if (!isUuid(variantId)) return null;
-  const r = await db.execute(sql`${SNAPSHOT_SELECT} where v.id = ${variantId}`);
+  const r = await db.execute(sql`${SNAPSHOT_SELECT} where v.id = ${variantId} ${opts.lockShare ? sql`for share of v` : sql``}`);
   return r.rows[0] ? toSnapshot(r.rows[0] as Record<string, unknown>) : null;
 }
 

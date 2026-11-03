@@ -183,6 +183,20 @@
       "when": 1793630993114,
       "tag": "0025_p1a_settings_guards",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1793697626997,
+      "tag": "0026_p1b_catalog_inventory_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1793697731062,
+      "tag": "0027_p1b_catalog_inventory_guards",
+      "breakpoints": true
     }
   ]
 }

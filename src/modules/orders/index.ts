@@ -25,6 +25,7 @@ export { ALL_JOBS, listFindings, runChecks, runReconciliation } from "./applicat
 export type { ReconFinding, ReconJob, ReconOptions } from "./application/reconciliation";
 export { evaluateRefundPolicy } from "./domain/refund-policy";
 export { assertCheckoutConfigured } from "./application/core";
+export { orderVariantUsage } from "./application/usage";
 export { RESERVATION_TTL_BOUNDS, getOrderSettings, getOrderSettingsAdmin, setReservationTtl } from "./application/settings";
 export type { OrderSettingValues, OrderSettings, OrderSettingsAdmin } from "./application/settings";
 export type { OrdersDeps } from "./application/core";

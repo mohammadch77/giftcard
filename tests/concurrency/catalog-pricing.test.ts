@@ -12,7 +12,7 @@ beforeAll(async () => {
   const c = adminCtx(f);
   const base = await seedBase(c);
   await setProductStatus(c, base.product, "PUBLISHED", "launch product");
-  const b = await createVariant(c, base.product, { sku: uniq("B"), name: "B", fulfillmentMethod: "MANUAL", price: 1_000_000 });
+  const b = await createVariant(c, base.product, { sku: uniq("B"), name: "B", fulfillmentMethod: "AUTO_CODE", price: 1_000_000 });
   await setVariantStatus(c, base.variant, "PUBLISHED", "launch variant");
   await setVariantStatus(c, b.id, "PUBLISHED", "launch variant");
   ids = { a: base.variant, b: b.id };

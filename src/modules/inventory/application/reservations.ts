@@ -60,7 +60,7 @@ async function allocateCodes(tx: Tx, variantId: string, qty: number, reservation
   const rows = (
     await tx.execute(
       sql`with picked as (
-            select id from digital_codes where variant_id = ${variantId} and status = 'AVAILABLE' order by id limit ${qty} for update skip locked)
+            select id from digital_codes where variant_id = ${variantId} and status = 'AVAILABLE' and (expires_at is null or expires_at > ${iso(until)}::timestamptz) order by id limit ${qty} for update skip locked)
           update digital_codes c set status = 'RESERVED', reservation_id = ${reservationId}, reserved_until = ${iso(until)}::timestamptz, updated_at = ${iso(now)}::timestamptz
             from picked where c.id = picked.id returning c.id`,
     )
@@ -100,7 +100,7 @@ export async function reserve(tx: Tx, clock: Clock, raw: unknown): Promise<Reser
       return { reservationId: ex.id, status: ex.status, expiresAt: toDate(ex.expires_at), replay: true };
     }
     for (const l of lines) {
-      const v = await getVariantSnapshot(sp, l.variantId);
+      const v = await getVariantSnapshot(sp, l.variantId, { lockShare: true });
       if (!v) throw new DomainError("CATALOG_NOT_FOUND", "variant not found");
       if (!v.sellable) throw new DomainError("CATALOG_NOT_SELLABLE", "variant is not available for sale");
       if (v.fulfillmentMethod === "SUPPLIER_API") throw new DomainError("INVENTORY_NOT_MANAGED", "supplier-backed variants have no stock here");
@@ -231,12 +231,14 @@ export async function withDeliverySecret<T>(db: Database, keys: KeyProvider, clo
 
 export interface Availability { variantId: string; itemisedAvailable: number; itemisedReserved: number; countedAvailable: number; countedReserved: number }
 
-export async function availability(db: Database | Tx, variantIds: readonly string[]): Promise<Availability[]> {
+export async function availability(db: Database | Tx, variantIds: readonly string[], now?: Date): Promise<Availability[]> {
   if (variantIds.length === 0 || variantIds.length > 100) throw new DomainError("INVENTORY_INVALID", "1..100 variant ids expected");
   const list = sql.join(variantIds.map((v) => sql`${v}::uuid`), sql`, `);
+  // OPS-2: a code past its expiry is not available even before the sweeper marks it (`now` is the injected clock; the database clock is only the fallback).
+  const at = now ? sql`${iso(now)}::timestamptz` : sql`now()`;
   const r = await db.execute(
     sql`select v.id as variant_id,
-          (select count(*) from digital_codes c where c.variant_id = v.id and c.status = 'AVAILABLE')::int as ia,
+          (select count(*) from digital_codes c where c.variant_id = v.id and c.status = 'AVAILABLE' and (c.expires_at is null or c.expires_at > ${at}))::int as ia,
           (select count(*) from digital_codes c where c.variant_id = v.id and c.status = 'RESERVED')::int as ir,
           coalesce((select available from stock_counters s where s.variant_id = v.id), 0) as ca,
           coalesce((select reserved from stock_counters s where s.variant_id = v.id), 0) as cr
@@ -264,6 +266,9 @@ export async function verifyInventory(db: Database | Tx): Promise<IntegrityFindi
   await q("counted_reserved_vs_lines", sql`select s.variant_id::text as d from stock_counters s
       where s.reserved <> coalesce((select sum(l.quantity) from inventory_reservation_lines l join inventory_reservations r on r.id = l.reservation_id
                                      where l.variant_id = s.variant_id and l.kind = 'COUNTED' and l.sold_at is null and r.status in ('ACTIVE','CONSUMED')), 0)`);
+  await q("code_reserved_or_sold_past_its_expiry", sql`select c.id::text as d from digital_codes c left join inventory_reservations r on r.id = c.reservation_id
+      where c.expires_at is not null and ((c.status = 'RESERVED' and c.expires_at <= c.reserved_until) or (c.status = 'SOLD' and c.expires_at <= r.consumed_at))`);
+  await q("expired_code_not_marked_after_expiry", sql`select c.id::text as d from digital_codes c where c.status = 'EXPIRED' and (c.expires_at is null or c.expires_at > c.updated_at)`);
   await q("itemised_movements_vs_available", sql`select v.variant_id::text as d from (select variant_id, sum(qty_delta) s from inventory_movements where code_id is not null group by variant_id) v
       where v.s <> (select count(*) from digital_codes c where c.variant_id = v.variant_id and c.status = 'AVAILABLE')`);
   return out;
