@@ -22,6 +22,10 @@ export const orders = pgTable(
     currency: text("currency").notNull().default("IRR"),
     total: rialAmount("total").notNull(),
     pricingVersion: text("pricing_version").notNull(),
+    /** P1-A: the refund policy version in force at checkout. Refund evaluation uses THIS version, never simply the active one. */
+    refundPolicyVersion: text("refund_policy_version").notNull().references(() => refundPolicyVersions.version),
+    /** P1-A: everything configurable that shaped this order (reservation TTL + settings version, fulfilment rules). Immutable; `backfilled` marks pre-P1-A orders. */
+    policySnapshot: jsonb("policy_snapshot").notNull(),
     idempotencyKey: text("idempotency_key").notNull(),
     requestHash: bytea("request_hash").notNull(),
     reservationId: uuid("reservation_id"),
@@ -44,6 +48,7 @@ export const orders = pgTable(
     check("orders_method_payment", sql`(${t.paymentMethod} = 'GATEWAY') or ${t.paymentId} is null`),
     // An order that is paid / being fulfilled / done has verified payment and a payment time.
     check("orders_paid_consistent", sql`${t.status} not in ('PAID','FULFILLING','PARTIALLY_COMPLETED','COMPLETED') or (${t.paymentStatus} = 'SUCCEEDED' and ${t.paidAt} is not null)`),
+    check("orders_policy_snapshot_object", sql`jsonb_typeof(${t.policySnapshot}) = 'object'`),
     check("orders_pending_unpaid", sql`${t.status} <> 'PENDING_PAYMENT' or ${t.paymentStatus} = 'PENDING'`),
     index("orders_user_idx").on(t.userRef, t.createdAt.desc()),
     index("orders_expiry_idx").on(t.expiresAt).where(sql`${t.status} = 'PENDING_PAYMENT'`),
@@ -232,4 +237,33 @@ export const reconciliationFindings = pgTable(
     foundAt: ts("found_at").notNull(),
   },
   (t) => [check("reconciliation_findings_severity", sql`${t.severity} in ('INFO','WARN','CRITICAL')`), index("reconciliation_findings_run_idx").on(t.runId, t.id)],
+);
+
+// ------------------------------------------------------------------ settings (ADM-1 / B3, P1-A)
+
+/**
+ * Order settings, module-owned (ADM-1): an APPEND-ONLY version table, one typed column per setting — NOT a key/value store.
+ * The active version is the highest `version`. A new version affects only FUTURE checkouts: an order stores the TTL it used
+ * (orders.policy_snapshot) and a reservation's expiry is fixed at creation. Version 1 is the owner-approved initial value (B3: 900 s).
+ */
+export const orderSettingsVersions = pgTable(
+  "order_settings_versions",
+  {
+    id: uuid("id").primaryKey(),
+    version: integer("version").notNull(),
+    reservationTtlSeconds: integer("reservation_ttl_seconds").notNull(),
+    source: text("source").notNull(),
+    previousVersion: integer("previous_version"),
+    changedBy: text("changed_by").notNull(),
+    reason: text("reason").notNull(),
+    createdAt: ts("created_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("order_settings_version_uq").on(t.version),
+    uniqueIndex("order_settings_previous_uq").on(t.previousVersion).where(sql`${t.previousVersion} is not null`),
+    check("order_settings_ttl_bounds", sql`${t.reservationTtlSeconds} between 60 and 3600`),
+    check("order_settings_source", sql`${t.source} in ('SEED','ADMIN')`),
+    check("order_settings_reason", sql`char_length(btrim(${t.reason})) >= 10`),
+    check("order_settings_chain", sql`(${t.version} = 1 and ${t.previousVersion} is null) or (${t.version} > 1 and ${t.previousVersion} = ${t.version} - 1)`),
+  ],
 );

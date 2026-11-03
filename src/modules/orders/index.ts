@@ -4,7 +4,9 @@
  * The only module that combines inventory, payments, fulfillment and the ledger in one transaction (F6).
  *
  * FAIL-CLOSED business configuration (not defaults):
- *   B3  reservation hold: `reservationTtlSeconds` must be supplied (ORDER_RESERVATION_TTL_NOT_CONFIGURED otherwise).
+ *   B3  reservation hold: a module-owned, versioned setting (initial 900 s, bounds 60–3600; ADM-1). If no valid version can be read,
+ *       checkout is refused (ORDER_RESERVATION_TTL_NOT_CONFIGURED). Every order snapshots the TTL, settings version, refund policy version and
+ *       fulfilment rules it was created under (P1-A); refund evaluation uses the order's recorded refund policy version.
  *   D10 order-payment accounting: an `OrderPaymentPostingPolicy` must be supplied; the default refuses
  *       (ORDER_ACCOUNTING_NOT_CONFIGURED) so no order can be created or settled while the accountant's decision is open.
  * 2b-9: full-order refunds (policy as data, 'temporary-0'), four-eyes approval, exact-mirror reversal or approved D9 suspense rules only;
@@ -23,6 +25,8 @@ export { ALL_JOBS, listFindings, runChecks, runReconciliation } from "./applicat
 export type { ReconFinding, ReconJob, ReconOptions } from "./application/reconciliation";
 export { evaluateRefundPolicy } from "./domain/refund-policy";
 export { assertCheckoutConfigured } from "./application/core";
+export { RESERVATION_TTL_BOUNDS, getOrderSettings, getOrderSettingsAdmin, setReservationTtl } from "./application/settings";
+export type { OrderSettingValues, OrderSettings, OrderSettingsAdmin } from "./application/settings";
 export type { OrdersDeps } from "./application/core";
 export { unitRef } from "./application/core";
 export { NullOrderPostingPolicy, ORDER_PERMISSIONS, PAID_STATUSES, REFUND_PERMISSIONS } from "./domain/types";

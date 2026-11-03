@@ -130,5 +130,7 @@ The repository is empty, so there is nothing to conflict with. ORM = Drizzle (de
 ## 11. Out of scope for v1 (explicit)
 Marketplace/vendors, microservices, Kubernetes, Docker requirement, event streaming, search engine (use Postgres FTS/`pg_trgm`), multi-currency FX, mobile app.
 
-## 12. Admin settings ownership (approved 2026-11-11, ADM-1 — not implemented)
+## 12. Admin settings ownership (approved 2026-11-11, ADM-1 — foundation, B3 and B5 implemented in P1-A)
 Configuration is owned by the module it governs (e.g. orders: reservation TTL; wallet: top-up limits; payments/suppliers/notifications: provider activation and priority) and exposed through ONE future admin interface. There is no global generic settings table. Details and invariants: `docs/ADMIN_SETTINGS_ARCHITECTURE.md`.
+
+**As built in P1-A (2026-11-02).** `orders` owns `order_settings_versions` (reservation TTL) and `wallet` owns `wallet_limit_versions` (top-up limits). `platform/settings` contains only shared mechanics (typed parsing, mandatory reason) and no storage. Reads happen inside the consumer's own transaction (checkout reads the TTL; a top-up reads the limits), so the value used and the value recorded on the order / top-up cannot diverge. Orders additionally snapshot, at checkout, the refund policy version, the reservation TTL with its settings version and the fulfilment-compatibility rows in `orders.refund_policy_version` / `orders.policy_snapshot` (immutable); refund evaluation reads the order's recorded version. The wallet daily limit is computed per user over the Asia/Tehran calendar day under a per-user advisory lock.

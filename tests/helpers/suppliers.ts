@@ -58,8 +58,8 @@ export async function seedPaidOrder(f: { t: { pool: Pool } }, userId: string, it
     await c.query("select set_config('app.actor_id','test-seed',false)");
     await c.query("begin");
     await c.query(
-      `insert into orders (id, number, user_ref, status, payment_status, payment_method, currency, total, pricing_version, idempotency_key, request_hash, expires_at, paid_at, created_at, updated_at)
-       values ($1, $2, $3, 'PENDING_PAYMENT', 'PENDING', 'WALLET', 'IRR', $4, 'test', $5, decode(repeat('ab',32),'hex'), now() + interval '1 hour', null, now(), now())`,
+      `insert into orders (id, number, user_ref, status, payment_status, payment_method, currency, total, pricing_version, refund_policy_version, policy_snapshot, idempotency_key, request_hash, expires_at, paid_at, created_at, updated_at)
+       values ($1, $2, $3, 'PENDING_PAYMENT', 'PENDING', 'WALLET', 'IRR', $4, 'test', 'temporary-0', '{"refundPolicyVersion":"temporary-0"}'::jsonb, $5, decode(repeat('ab',32),'hex'), now() + interval '1 hour', null, now(), now())`,
       [orderId, `T${Math.random().toString(36).slice(2, 8).toUpperCase()}`, userId, total, `seed-${orderId}`],
     );
     let line = 0;

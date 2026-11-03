@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { recordAudit } from "@/modules/audit";
-import { getVariantSnapshot } from "@/modules/catalog";
+import { getFulfillmentCompatibility, getVariantSnapshot } from "@/modules/catalog";
 import { consume, reserve } from "@/modules/inventory";
 import { findPaymentByGatewayRef, initiatePayment, startGatewayPayment, verifyPayment } from "@/modules/payments";
 import type { PaymentView, VerifyOutcome } from "@/modules/payments";
@@ -17,6 +17,7 @@ import { ORDER_COLS, SYSTEM, assertCheckoutConfigured, first, handleLatePayment,
 import type { OrderRow, OrdersDeps } from "./core";
 import type { PaymentMethod } from "../domain/types";
 import { cancelOrder, expireOrder } from "./lifecycle";
+import { getOrderSettings } from "./settings";
 
 const checkoutInput = z.strictObject({
   userId: z.string().min(1).max(200),
@@ -38,7 +39,7 @@ export async function checkout(deps: OrdersDeps, raw: unknown): Promise<Checkout
   const p = checkoutInput.safeParse(raw);
   if (!p.success) throw new DomainError("ORDER_INVALID", `invalid checkout: ${p.error.issues.map((i) => `${i.path.join(".")}: ${i.code}`).join("; ")}`);
   const i = p.data;
-  const ttl = assertCheckoutConfigured(deps, i.paymentMethod);
+  assertCheckoutConfigured(deps, i.paymentMethod);
   if (new Set(i.lines.map((l) => l.variantId)).size !== i.lines.length) throw new DomainError("ORDER_INVALID", "duplicate variant in order");
   const lines = [...i.lines].sort((a, b) => (a.variantId < b.variantId ? -1 : 1));
   const hash = createHash("sha256").update(JSON.stringify([i.paymentMethod, lines.map((l) => [l.variantId, l.quantity])])).digest();
@@ -51,6 +52,11 @@ export async function checkout(deps: OrdersDeps, raw: unknown): Promise<Checkout
       return { orderId: ex.id, number: ex.number, status: ex.status, paymentMethod: ex.payment_method, total: Number(ex.total), expiresAt: toDate(ex.expires_at), paymentId: ex.payment_id, replay: true };
     }
     const now = deps.clock.now();
+    // P1-A: settings are read INSIDE this transaction, so the snapshot, the reservation and the order expiry all use the same version.
+    const settings = await getOrderSettings(tx);
+    const ttl = settings.values.reservationTtlSeconds;
+    const refundPolicy = (await tx.execute(sql`select version from refund_policy_versions where active`)).rows[0] as { version: string } | undefined;
+    if (!refundPolicy) throw new DomainError("ORDER_REFUND_POLICY_NOT_CONFIGURED", "no active refund policy version exists (B12): checkout is refused");
     const q = await quote(tx, lines, now);
     const snaps = await Promise.all(lines.map((l) => getVariantSnapshot(tx, l.variantId)));
     const orderId = uuidv7(deps.clock);
@@ -65,10 +71,18 @@ export async function checkout(deps: OrdersDeps, raw: unknown): Promise<Checkout
       payment = (await initiatePayment(tx, deps.clock, { idempotencyKey: `orderpay:${orderId}`, purpose: "ORDER", orderRef: orderId, userRef: i.userId, gateway: deps.gateway.key, amount: q.subtotal })).payment;
     }
     const number = generateOrderNumber();
+    const productTypes = [...new Set(snaps.map((s) => s!.productType))].sort();
+    const policySnapshot = {
+      schema: 1, backfilled: false, capturedAt: iso(now),
+      refundPolicyVersion: refundPolicy.version,
+      reservationTtlSeconds: ttl, orderSettingsVersion: settings.version,
+      fulfillmentRules: await getFulfillmentCompatibility(tx, productTypes),
+      itemFulfillmentMethods: [...new Set(snaps.map((s) => s!.fulfillmentMethod))].sort(),
+    };
     await setTransitionContext(tx, { actorId: i.userId, reason: "checkout" });
     await tx.execute(
-      sql`insert into orders (id, number, user_ref, status, payment_status, payment_method, currency, total, pricing_version, idempotency_key, request_hash, reservation_id, payment_id, expires_at, created_at, updated_at)
-          values (${orderId}, ${number}, ${i.userId}, 'PENDING_PAYMENT', 'PENDING', ${i.paymentMethod}, 'IRR', ${q.subtotal}, ${q.pricingVersion}, ${i.idempotencyKey}, ${hash}, ${reservationId}, ${payment?.id ?? null}, ${iso(expiresAt)}::timestamptz, ${iso(now)}::timestamptz, ${iso(now)}::timestamptz)`,
+      sql`insert into orders (id, number, user_ref, status, payment_status, payment_method, currency, total, pricing_version, refund_policy_version, policy_snapshot, idempotency_key, request_hash, reservation_id, payment_id, expires_at, created_at, updated_at)
+          values (${orderId}, ${number}, ${i.userId}, 'PENDING_PAYMENT', 'PENDING', ${i.paymentMethod}, 'IRR', ${q.subtotal}, ${q.pricingVersion}, ${refundPolicy.version}, ${JSON.stringify(policySnapshot)}::jsonb, ${i.idempotencyKey}, ${hash}, ${reservationId}, ${payment?.id ?? null}, ${iso(expiresAt)}::timestamptz, ${iso(now)}::timestamptz, ${iso(now)}::timestamptz)`,
     );
     for (let k = 0; k < lines.length; k++) {
       const l = q.lines[k]!;

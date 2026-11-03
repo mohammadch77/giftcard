@@ -43,9 +43,14 @@ const view = (r: RefundRow): RefundView => ({
 });
 const blocked = (m: string): DomainError => new DomainError("REFUND_BLOCKED", m);
 
-export async function loadPolicy(tx: Tx | Database): Promise<{ version: string; rules: Map<DisclosureStateName, RefundDecision> }> {
-  const v = first<{ version: string }>(await tx.execute(sql`select version from refund_policy_versions where active`));
-  if (!v) throw blocked("no active refund policy version (B12)");
+/**
+ * Load a refund policy version's rules. With `version` (P1-A): exactly that version — an order is evaluated under the version recorded when
+ * it was created (orders.refund_policy_version), so replacing the active policy never changes the terms of an existing order.
+ * Without it: the currently active version (used for NEW orders only).
+ */
+export async function loadPolicy(tx: Tx | Database, version?: string): Promise<{ version: string; rules: Map<DisclosureStateName, RefundDecision> }> {
+  const v = first<{ version: string }>(await tx.execute(version === undefined ? sql`select version from refund_policy_versions where active` : sql`select version from refund_policy_versions where version = ${version}`));
+  if (!v) throw blocked(version === undefined ? "no active refund policy version (B12)" : `refund policy version ${version} recorded on the order does not exist`);
   const rules = new Map<DisclosureStateName, RefundDecision>();
   for (const r of (await tx.execute(sql`select disclosure_state, decision from refund_policy_rules where version = ${v.version}`)).rows as { disclosure_state: DisclosureStateName; decision: RefundDecision }[]) rules.set(r.disclosure_state, r.decision);
   return { version: v.version, rules };
@@ -67,7 +72,7 @@ export async function requestRefund(deps: OrdersDeps, by: RefundRequester, input
       if (existing.request_hash === hash) return { refund: view(existing), replay: true };
       throw new DomainError("REFUND_INVALID", "a different refund is already open for this order");
     }
-    const policy = await loadPolicy(tx);
+    const policy = await loadPolicy(tx, o.refund_policy_version); // the order's OWN recorded version, not the currently active one
     let source: "ORDER_PAYMENT" | "SUSPENSE_RECEIPT" = "ORDER_PAYMENT";
     let suspenseKey: string | null = null;
     let amount = Number(o.total);

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { trialBalance, verifyIntegrity } from "@/modules/ledger";
 import { completeTopUp, decideAdjustment, getWalletBalance, requestAdjustment } from "@/modules/wallet";
-import { LIMITS, deps, paidTopUp, payFixture, startedTopUp, uid, walletCtx } from "../helpers/payments";
+import { deps, paidTopUp, payFixture, startedTopUp, uid, walletCtx } from "../helpers/payments";
 import type { PayFixture } from "../helpers/payments";
 
 let f: PayFixture;
@@ -51,7 +51,7 @@ describe("C3 — duplicate callbacks", () => {
     const user = uid();
     const key = uid("k");
     const { startTopUp } = await import("@/modules/wallet");
-    const res = await all(25, () => startTopUp(f.app.db, deps(f), { userId: user, amount: 50_000, idempotencyKey: key }, LIMITS));
+    const res = await all(25, () => startTopUp(f.app.db, deps(f), { userId: user, amount: 50_000, idempotencyKey: key }));
     expect(new Set(res.map((r) => r.topupId)).size).toBe(1);
     expect(new Set(res.map((r) => r.paymentId)).size).toBe(1);
     expect((await f.t.pool.query("select count(*)::int c from payments where topup_ref = $1", [res[0]!.topupId])).rows[0].c).toBe(1);

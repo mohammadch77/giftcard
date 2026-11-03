@@ -27,8 +27,6 @@ export interface OrdersDeps {
   gateway: PaymentGateway;
   /** D10: defaults to the refusing policy. */
   policy?: OrderPaymentPostingPolicy;
-  /** B3 (OPEN): no default. Undefined => checkout is refused. */
-  reservationTtlSeconds?: number | undefined;
   verify?: { leaseSeconds?: number; maxAttempts?: number };
 }
 export const policyOf = (d: OrdersDeps): OrderPaymentPostingPolicy => d.policy ?? new NullOrderPostingPolicy();
@@ -36,8 +34,9 @@ export const policyOf = (d: OrdersDeps): OrderPaymentPostingPolicy => d.policy ?
 export interface OrderRow {
   id: string; number: string; user_ref: string; status: OrderStatus; payment_status: string; payment_method: PaymentMethod; total: string | number;
   reservation_id: string | null; payment_id: string | null; expires_at: Ts; paid_at: Ts | null; settlement_ledger_txn_id: string | number | null;
+  refund_policy_version: string;
 }
-export const ORDER_COLS = sql`id, number, user_ref, status, payment_status, payment_method, total, reservation_id, payment_id, expires_at, paid_at, settlement_ledger_txn_id`;
+export const ORDER_COLS = sql`id, number, user_ref, status, payment_status, payment_method, total, reservation_id, payment_id, expires_at, paid_at, settlement_ledger_txn_id, refund_policy_version`;
 
 export const unitRef = (itemId: string, unit: number): string => `${itemId}#${unit}`;
 
@@ -124,12 +123,12 @@ export async function handleLatePayment(tx: Tx, deps: OrdersDeps, o: OrderRow, g
   await recordAudit(tx, { actor: SYSTEM, action: "orders.order.late_payment_hold", entity: { type: "order", id: o.id }, metadata: { amount, paymentStatus: o.status }, occurredAt: now });
 }
 
-/** Fail-closed business configuration: B3 (hold) and D10 (accounting) must be decided before any order can be created. */
-export function assertCheckoutConfigured(deps: OrdersDeps, method: PaymentMethod): number {
-  const ttl = deps.reservationTtlSeconds;
-  if (ttl === undefined || !Number.isInteger(ttl) || ttl < 60 || ttl > 3600) throw new DomainError("ORDER_RESERVATION_TTL_NOT_CONFIGURED", "the checkout reservation hold is not configured (decision B3 is open)");
+/**
+ * Fail-closed business configuration: D10 (accounting) and the gateway must be decided before any order can be created. The B3 reservation
+ * TTL is a versioned module setting read INSIDE the checkout transaction (see settings.ts), so it is not checked here.
+ */
+export function assertCheckoutConfigured(deps: OrdersDeps, method: PaymentMethod): void {
   if (!policyOf(deps).configured) throw new DomainError("ORDER_ACCOUNTING_NOT_CONFIGURED", "order payment accounting is not decided (D10): checkout is blocked");
   if (method === "GATEWAY" && deps.gateway.key === "none") throw new DomainError("PAYMENT_GATEWAY_NOT_CONFIGURED", "no payment gateway is configured");
-  return ttl;
 }
 

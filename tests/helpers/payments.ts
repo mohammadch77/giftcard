@@ -1,4 +1,5 @@
 import type { WalletAdminContext } from "@/modules/wallet";
+import { decideLimitChange, requestLimitChange } from "@/modules/wallet";
 import { ManualClock } from "@/platform/clock/testing";
 import { DomainError } from "@/platform/errors";
 import { TestPaymentGateway } from "@/platform/payment-gateway/testing/test-gateway";
@@ -8,12 +9,24 @@ import { createDatabaseAsRole, createTestDatabase, createTestRoles } from "./db"
 import type { TestDatabase } from "./db";
 
 export interface PayFixture { t: TestDatabase; app: DatabaseHandle; clock: ManualClock; gateway: TestPaymentGateway }
-export const LIMITS = { minRial: 10_000, maxRial: 100_000_000 };
+/**
+ * Limits most wallet tests run under (the owner-approved defaults of P1-A are 1,000,000 / 100,000,000 / 300,000,000 and are exercised by
+ * tests/db/p1a-wallet-limits.test.ts). They are applied through the REAL two-person settings flow, not by writing to the table.
+ */
+export const LIMITS = { minRial: 10_000, maxRial: 100_000_000, dailyMaxRial: 10_000_000_000 };
 
-export async function payFixture(): Promise<PayFixture> {
+export async function payFixture(options: { testLimits?: boolean } = {}): Promise<PayFixture> {
   const t = await createTestDatabase();
   const roles = await createTestRoles(t);
-  return { t, app: createDatabaseAsRole(t, roles.appRole, 30), clock: new ManualClock("2026-06-01T10:00:00Z"), gateway: new TestPaymentGateway() };
+  const f = { t, app: createDatabaseAsRole(t, roles.appRole, 30), clock: new ManualClock("2026-06-01T10:00:00Z"), gateway: new TestPaymentGateway() };
+  if (options.testLimits !== false) await configureTopUpLimits(f, LIMITS);
+  return f;
+}
+
+/** Change the active top-up limits through the audited two-person flow (two different administrators). */
+export async function configureTopUpLimits(f: PayFixture, v: { minRial: number; maxRial: number; dailyMaxRial: number }): Promise<void> {
+  const { requestId } = await requestLimitChange(walletCtx(f, "settings-requester"), { ...v, reason: "test limits for this suite" });
+  await decideLimitChange(walletCtx(f, "settings-approver"), requestId, { approve: true, reason: "approved for tests" });
 }
 
 export const deps = (f: PayFixture) => ({ gateway: f.gateway, clock: f.clock });
@@ -32,7 +45,7 @@ export const uid = (p = "user") => `${p}-${++n}-${Math.random().toString(36).sli
 
 /** Start a top-up and return the gateway reference used for callbacks. */
 export async function startedTopUp(f: PayFixture, userId: string, amount: number, key = uid("k")) {
-  const r = await startTopUp(f.app.db, deps(f), { userId, amount, idempotencyKey: key }, LIMITS);
+  const r = await startTopUp(f.app.db, deps(f), { userId, amount, idempotencyKey: key });
   const gatewayRef = (await f.t.pool.query("select gateway_ref from payments where id = $1", [r.paymentId])).rows[0].gateway_ref as string;
   return { ...r, gatewayRef };
 }

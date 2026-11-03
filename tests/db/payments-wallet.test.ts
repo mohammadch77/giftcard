@@ -7,7 +7,7 @@ import type { GatewayVerifyReply } from "@/platform/payment-gateway";
 import { TestPaymentGateway } from "@/platform/payment-gateway/testing/test-gateway";
 import { withTransaction } from "@/platform/db";
 import { pgCode } from "../helpers/db";
-import { LIMITS, deps, paidTopUp, payFixture, startedTopUp, uid, walletCtx } from "../helpers/payments";
+import { deps, paidTopUp, payFixture, startedTopUp, uid, walletCtx } from "../helpers/payments";
 import type { PayFixture } from "../helpers/payments";
 
 let f: PayFixture;
@@ -80,22 +80,20 @@ describe("wallet top-up (verified payment -> ledger)", () => {
     expect(await ledgerCount(`topup:${t.paymentId}`)).toBe(1);
     await sound();
   });
-  it("is idempotent per key and fails closed without configured limits (B5 open) or outside them", async () => {
+  it("is idempotent per key and refuses amounts outside the active limits (fail-closed behaviour without limits: tests/db/p1a-wallet-limits.test.ts)", async () => {
     const user = uid();
     const key = uid("k");
-    const a = await startTopUp(f.app.db, deps(f), { userId: user, amount: 50_000, idempotencyKey: key }, LIMITS);
-    const b = await startTopUp(f.app.db, deps(f), { userId: user, amount: 50_000, idempotencyKey: key }, LIMITS);
+    const a = await startTopUp(f.app.db, deps(f), { userId: user, amount: 50_000, idempotencyKey: key });
+    const b = await startTopUp(f.app.db, deps(f), { userId: user, amount: 50_000, idempotencyKey: key });
     expect(b).toMatchObject({ topupId: a.topupId, paymentId: a.paymentId, replay: true });
     expect((await f.t.pool.query("select count(*)::int c from payments where topup_ref = $1", [a.topupId])).rows[0].c).toBe(1);
-    expect(await code(startTopUp(f.app.db, deps(f), { userId: user, amount: 60_000, idempotencyKey: key }, LIMITS))).toBe("IDEMPOTENCY_CONFLICT");
-    expect(await code(startTopUp(f.app.db, deps(f), { userId: user, amount: 50_000, idempotencyKey: uid("k") }, {}))).toBe("WALLET_LIMITS_NOT_CONFIGURED");
-    expect(await code(startTopUp(f.app.db, deps(f), { userId: user, amount: 50_000, idempotencyKey: uid("k") }, { minRial: 10_000 }))).toBe("WALLET_LIMITS_NOT_CONFIGURED");
-    for (const amount of [5_000, 100_000_010, 15_005, 0, -10, 12.5]) expect(await code(startTopUp(f.app.db, deps(f), { userId: user, amount, idempotencyKey: uid("k") }, LIMITS)), String(amount)).not.toBe("NO_ERROR");
+    expect(await code(startTopUp(f.app.db, deps(f), { userId: user, amount: 60_000, idempotencyKey: key }))).toBe("IDEMPOTENCY_CONFLICT");
+    for (const amount of [5_000, 100_000_010, 15_005, 0, -10, 12.5]) expect(await code(startTopUp(f.app.db, deps(f), { userId: user, amount, idempotencyKey: uid("k") })), String(amount)).not.toBe("NO_ERROR");
   });
   it("with no gateway configured the failure is loud and nothing is credited", async () => {
     const user = uid();
     const dead = { gateway: new NullPaymentGateway(), clock: f.clock };
-    expect(await code(startTopUp(f.app.db, dead, { userId: user, amount: 50_000, idempotencyKey: uid("k") }, LIMITS))).toBe("PAYMENT_GATEWAY_NOT_CONFIGURED");
+    expect(await code(startTopUp(f.app.db, dead, { userId: user, amount: 50_000, idempotencyKey: uid("k") }))).toBe("PAYMENT_GATEWAY_NOT_CONFIGURED");
     expect(await getWalletBalance(f.app.db, user)).toBe(0);
   });
   it("a callback is only a trigger: unknown references are harmless, an unanswered verification credits nothing", async () => {

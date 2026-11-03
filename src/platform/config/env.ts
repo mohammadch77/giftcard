@@ -47,13 +47,8 @@ const baseSchema = z.object({
   DEV_PEPPER_V1: key32,
   DEV_PEPPER_V2: key32,
 
-  // Wallet top-up limits (B5 is OPEN: NO default exists). Unset = top-ups fail closed (WALLET_LIMITS_NOT_CONFIGURED).
-  WALLET_TOPUP_MIN_RIAL: z.coerce.number().int().positive().optional(),
-  WALLET_TOPUP_MAX_RIAL: z.coerce.number().int().positive().optional(),
-
-  // Checkout reservation hold in seconds (B3 is OPEN: NO default exists). Unset = checkout fails closed
-  // (ORDER_RESERVATION_TTL_NOT_CONFIGURED). The inventory module's 900 s is a technical default, not a business value.
-  ORDER_RESERVATION_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).optional(),
+  // NOTE (P1-A): the B3 reservation TTL and the B5 wallet limits are no longer environment variables. They are versioned, audited module
+  // settings (order_settings_versions, wallet_limit_versions; ADM-1). An env value would be a second, unaudited source of truth.
 
   // Worker / outbox tuning (platform, no business meaning).
   OUTBOX_POLL_INTERVAL_MS: z.coerce.number().int().min(100).max(60_000).default(1000),

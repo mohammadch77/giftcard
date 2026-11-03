@@ -14,11 +14,11 @@ export async function orderFixture(): Promise<OrderFixture> {
   const base = await supplierFixture();
   const gateway = new TestPaymentGateway();
   const policy = new TestPostingPolicy();
-  const deps = { ...base.deps, db: base.app.db, clock: base.clock, gateway, policy, reservationTtlSeconds: 900 };
+  const deps = { ...base.deps, db: base.app.db, clock: base.clock, gateway, policy };
   return { ...base, gateway, policy, deps } as OrderFixture;
 }
 
-export const ordersDeps = (f: OrderFixture, over: Partial<OrdersDeps> = {}): OrdersDeps => ({ db: f.app.db, clock: f.clock, gateway: f.gateway, policy: f.policy, reservationTtlSeconds: 900, ...over });
+export const ordersDeps = (f: OrderFixture, over: Partial<OrdersDeps> = {}): OrdersDeps => ({ db: f.app.db, clock: f.clock, gateway: f.gateway, policy: f.policy, ...over });
 
 export function adminOf(f: OrderFixture, actorId = "admin-1", allowed: "all" | string[] = "all") {
   return {

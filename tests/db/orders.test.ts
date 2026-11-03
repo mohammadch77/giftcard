@@ -37,16 +37,14 @@ const healthy = async () => {
   expect(await verifyIntegrity(f.app.db)).toEqual([]);
 };
 
-describe("fail-closed business configuration (B3, D10)", () => {
-  it("no reservation hold configured (B3), no accounting policy (D10) or no gateway: checkout is refused and NOTHING is written", async () => {
+describe("fail-closed business configuration (D10, gateway; B3 is covered by tests/db/p1a-order-settings.test.ts)", () => {
+  it("no accounting policy (D10) or no gateway: checkout is refused and NOTHING is written", async () => {
     const { variantId } = await stockedVariant(f, 2);
     const before = await counts();
     const lines = [{ variantId, quantity: 1 }];
     const base = { userId: "u-cfg", paymentMethod: "GATEWAY" as const, idempotencyKey: "k", lines };
-    expect(await code(checkout(ordersDeps(f, { reservationTtlSeconds: undefined }), base))).toBe("ORDER_RESERVATION_TTL_NOT_CONFIGURED"); // inventory's 900 s technical default is NOT used
-    for (const bad of [0, 30, 4000, 90.5]) expect(await code(checkout(ordersDeps(f, { reservationTtlSeconds: bad }), base)), String(bad)).toBe("ORDER_RESERVATION_TTL_NOT_CONFIGURED");
     expect(await code(checkout(ordersDeps(f, { policy: new NullOrderPostingPolicy() }), base))).toBe("ORDER_ACCOUNTING_NOT_CONFIGURED");
-    expect(await code(checkout({ db: f.app.db, clock: f.clock, gateway: f.gateway, reservationTtlSeconds: 900 }, base))).toBe("ORDER_ACCOUNTING_NOT_CONFIGURED"); // default policy refuses
+    expect(await code(checkout({ db: f.app.db, clock: f.clock, gateway: f.gateway }, base))).toBe("ORDER_ACCOUNTING_NOT_CONFIGURED"); // default policy refuses
     const none = { ...f.gateway, key: "none" } as never;
     expect(await code(checkout(ordersDeps(f, { gateway: none }), base))).toBe("PAYMENT_GATEWAY_NOT_CONFIGURED");
     expect(await counts()).toEqual(before);
@@ -113,7 +111,7 @@ describe("checkout", () => {
     try {
       await c.query("select set_config('app.actor_id','t',false)");
       await c.query("begin");
-      await c.query("insert into orders (id, number, user_ref, status, payment_status, payment_method, currency, total, pricing_version, idempotency_key, request_hash, expires_at, created_at, updated_at) values (gen_random_uuid(), 'ZZZZZ-ZZZZZ', 'x', 'PENDING_PAYMENT', 'PENDING', 'WALLET', 'IRR', 5000, 'v', 'bad-total', decode(repeat('ab',32),'hex'), now(), now(), now())");
+      await c.query("insert into orders (id, number, user_ref, status, payment_status, payment_method, currency, total, pricing_version, refund_policy_version, policy_snapshot, idempotency_key, request_hash, expires_at, created_at, updated_at) values (gen_random_uuid(), 'ZZZZZ-ZZZZZ', 'x', 'PENDING_PAYMENT', 'PENDING', 'WALLET', 'IRR', 5000, 'v', 'temporary-0', '{\"refundPolicyVersion\":\"temporary-0\"}'::jsonb, 'bad-total', decode(repeat('ab',32),'hex'), now(), now(), now())");
       expect(await c.query("commit").then(() => "ok", (e: unknown) => pgCode(e))).toBe("PO001");
     } finally {
       c.release();

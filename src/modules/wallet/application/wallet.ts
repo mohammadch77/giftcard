@@ -13,7 +13,7 @@ import { uuidv7 } from "@/platform/ids";
 import { rial, rialPrice } from "@/platform/money";
 import type { PaymentGateway } from "@/platform/payment-gateway";
 import { setTransitionContext } from "@/platform/transitions";
-import type { TopUpLimits } from "../domain/permissions";
+import { dailyTopUpTotal, getTopUpLimits } from "./settings";
 
 const SYSTEM: AuditActor = { type: "SYSTEM", id: "system:wallet" };
 const iso = (d: Date) => d.toISOString();
@@ -34,31 +34,39 @@ export interface TopUpView { topupId: string; paymentId: string | null; status: 
 export interface StartTopUpResult extends TopUpView { redirectUrl?: string; replay: boolean; gateway: StartOutcome["status"] }
 
 /**
- * Start a wallet top-up. B5 (limits) is OPEN, so the operator must supply them; without limits this fails closed.
- * Phase 1 (one tx): top-up row + INITIATED payment, idempotent per key. Phase 2 (no tx): the gateway creates the payment.
+ * Start a wallet top-up. The limits (B5) are the ACTIVE versioned settings, read inside the same transaction as the insert.
+ * Phase 1 (one tx): per-user lock -> idempotent replay (never re-validated: a limits change must not alter a top-up already started)
+ * -> min/max -> insert -> daily limit (Asia/Tehran day, counting in-flight and completed top-ups, including this one; a breach rolls back).
+ * The per-user advisory lock serialises concurrent top-ups of the SAME user, so parallel requests cannot jointly exceed the daily maximum.
+ * Phase 2 (no tx): the gateway creates the payment.
  */
-export async function startTopUp(db: Database, deps: { gateway: PaymentGateway; clock: Clock }, input: { userId: string; amount: number; idempotencyKey: string }, limits: TopUpLimits): Promise<StartTopUpResult> {
-  if (limits.minRial === undefined || limits.maxRial === undefined) throw new DomainError("WALLET_LIMITS_NOT_CONFIGURED", "wallet top-up limits are not configured (decision B5 is open)");
+export async function startTopUp(db: Database, deps: { gateway: PaymentGateway; clock: Clock }, input: { userId: string; amount: number; idempotencyKey: string }): Promise<StartTopUpResult> {
   if (!USER_REF.test(input.userId) || !input.idempotencyKey || input.idempotencyKey.length > 200) throw new DomainError("WALLET_INVALID", "invalid user or idempotency key");
   const amount = rialPrice(input.amount); // integer Rial, multiple of 10 (exact Toman)
-  if (amount <= 0 || amount < limits.minRial || amount > limits.maxRial) throw new DomainError("WALLET_INVALID", "amount is outside the allowed top-up range");
   const hash = createHash("sha256").update(JSON.stringify([input.userId, amount])).digest();
   const now = deps.clock.now();
 
   const phase1 = await withTransaction(db, async (tx) => {
-    const id = uuidv7(deps.clock);
-    await setTransitionContext(tx, { actorId: SYSTEM.id, reason: "top-up requested" });
-    const ins = await tx.execute(
-      sql`insert into wallet_topups (id, user_ref, amount, status, idempotency_key, request_hash, created_at) values (${id}, ${input.userId}, ${amount}, 'REQUESTED', ${input.idempotencyKey}, ${hash}, ${iso(now)}::timestamptz)
-          on conflict (idempotency_key) do nothing returning id`,
-    );
-    let topupId = id;
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`topup-daily:${input.userId}`}, 0))`);
+    const existing = first<{ id: string; request_hash: Buffer }>(await tx.execute(sql`select id, request_hash from wallet_topups where idempotency_key = ${input.idempotencyKey}`));
+    let topupId: string;
     let replay = false;
-    if (ins.rows.length === 0) {
-      const ex = first<{ id: string; request_hash: Buffer }>(await tx.execute(sql`select id, request_hash from wallet_topups where idempotency_key = ${input.idempotencyKey}`))!;
-      if (!Buffer.from(ex.request_hash).equals(hash)) throw new DomainError("IDEMPOTENCY_CONFLICT", "top-up key was used with different content");
-      topupId = ex.id;
+    if (existing) {
+      if (!Buffer.from(existing.request_hash).equals(hash)) throw new DomainError("IDEMPOTENCY_CONFLICT", "top-up key was used with different content");
+      topupId = existing.id;
       replay = true;
+    } else {
+      const limits = await getTopUpLimits(tx);
+      if (amount <= 0 || amount < limits.values.minRial || amount > limits.values.maxRial) throw new DomainError("WALLET_INVALID", "amount is outside the allowed top-up range");
+      topupId = uuidv7(deps.clock);
+      await setTransitionContext(tx, { actorId: SYSTEM.id, reason: "top-up requested" });
+      const ins = await tx.execute(
+        sql`insert into wallet_topups (id, user_ref, amount, status, idempotency_key, request_hash, limits_version, created_at) values (${topupId}, ${input.userId}, ${amount}, 'REQUESTED', ${input.idempotencyKey}, ${hash}, ${limits.version}, ${iso(now)}::timestamptz)
+            on conflict (idempotency_key) do nothing returning id`,
+      );
+      if (ins.rows.length === 0) throw new DomainError("IDEMPOTENCY_CONFLICT", "top-up key was used concurrently");
+      const used = await dailyTopUpTotal(tx, input.userId, now); // includes the row just inserted
+      if (used > limits.values.dailyMaxRial) throw new DomainError("WALLET_DAILY_LIMIT_EXCEEDED", "this top-up would exceed the daily top-up limit");
     }
     const { payment } = await initiatePayment(tx, deps.clock, { idempotencyKey: `topup:${topupId}`, purpose: "WALLET_TOPUP", topupRef: topupId, userRef: input.userId, gateway: deps.gateway.key, amount });
     await tx.execute(sql`update wallet_topups set payment_id = ${payment.id} where id = ${topupId} and payment_id is null`);

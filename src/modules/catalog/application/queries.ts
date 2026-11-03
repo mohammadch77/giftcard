@@ -100,3 +100,15 @@ export async function listPublished(db: Database | Tx, f: ListFilters = {}): Pro
   const page = more ? items.slice(0, limit) : items;
   return { items: page, next: more ? page[page.length - 1]!.variantId : null };
 }
+
+/**
+ * The fulfilment-compatibility rules (table product_type_fulfillment, C-2) in force RIGHT NOW for the given product types.
+ * Orders snapshot this at checkout so a later tightening of the matrix never rewrites what an old order was sold under.
+ */
+export async function getFulfillmentCompatibility(db: Database | Tx, types: readonly string[]): Promise<Record<string, string[]>> {
+  const out: Record<string, string[]> = {};
+  if (types.length === 0) return out;
+  const r = await db.execute(sql`select product_type, method from product_type_fulfillment where product_type in (${sql.join(types.map((t) => sql`${t}`), sql`, `)}) order by product_type, method`);
+  for (const row of r.rows as { product_type: string; method: string }[]) (out[row.product_type] ??= []).push(row.method);
+  return out;
+}

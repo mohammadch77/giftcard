@@ -169,6 +169,20 @@
       "when": 1793622476346,
       "tag": "0023_refunds_guards",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1793630924628,
+      "tag": "0024_p1a_settings_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1793630993114,
+      "tag": "0025_p1a_settings_guards",
+      "breakpoints": true
     }
   ]
 }

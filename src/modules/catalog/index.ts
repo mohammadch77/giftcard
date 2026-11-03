@@ -10,7 +10,7 @@ export {
   setVariantAvailability, setVariantStatus, updateProduct, updateVariant,
 } from "./application/admin";
 export type { AdminContext, PriceChange } from "./application/admin";
-export { getPriceableVariants, getVariantSnapshot, listPublished } from "./application/queries";
+export { getFulfillmentCompatibility, getPriceableVariants, getVariantSnapshot, listPublished } from "./application/queries";
 export type { ListFilters, PriceableVariant, VariantSnapshot } from "./application/queries";
 export { CATALOG_PERMISSIONS } from "./domain/permissions";
 export type { CatalogPermissionDef } from "./domain/permissions";

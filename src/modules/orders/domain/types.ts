@@ -43,6 +43,8 @@ export const ORDER_PERMISSIONS: readonly OrderPermissionDef[] = [
   { key: "orders.read", description: "View any order and its holds", sensitive: false },
   { key: "orders.cancel", description: "Cancel an unpaid order on behalf of a customer", sensitive: false },
   { key: "orders.resolve_hold", description: "Resolve or review an order hold (late payment re-reservation)", sensitive: true },
+  { key: "orders.settings.read", description: "View order settings (reservation TTL)", sensitive: false },
+  { key: "orders.settings.manage", description: "Change order settings (reservation TTL); affects future checkouts only", sensitive: true },
 ];
 
 // ------------------------------------------------------------------ refunds (2b-9)

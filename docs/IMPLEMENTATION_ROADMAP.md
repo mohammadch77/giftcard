@@ -37,12 +37,12 @@ Launch is blocked until every row above is implemented, tested and reviewed — 
 ## Remaining implementation work from the 2026-11-11 consolidation (assignment only; each step still needs its own authorisation)
 | Work | Phase | Status |
 |---|---|---|
-| Admin Settings (module-owned typed settings + unified UI): B3 TTL, B5 limits incl. daily, B10 thresholds, retention (non-financial), notification channels/templates, provider activation/priority, worker monitoring, protected role management | Phase 3 (module settings + audit/approval) → Phase 4 (unified UI) | IMPLEMENTATION_PENDING |
+| Admin Settings (module-owned typed settings + unified UI): **B3 TTL and B5 limits incl. daily — IMPLEMENTED in P1-A**; still pending: B10 thresholds, retention (non-financial), notification channels/templates, provider activation/priority, worker monitoring, protected role management | Phase 3 (module settings + audit/approval) → Phase 4 (unified UI) | FOUNDATION + B3 + B5 DONE (P1-A); rest IMPLEMENTATION_PENDING |
 | D10 `OrderPaymentPostingPolicy` (`CUSTOMER_PREPAYMENTS`, revenue-on-delivery, supplier COGS, refund reversals) | Phase 3, after accountant validation | EXTERNAL_VALIDATION_REQUIRED |
 | Notifications (B7: ready-notices only, no secrets), SMS primary + fallback (X2) | Phase 3 | IMPLEMENTATION_PENDING |
 | Workers/schedulers (ORD-1, OPS-3 daily reconciliation, refund retries) and worker health view | Phase 3 (jobs) → Phase 4 (view) | IMPLEMENTATION_PENDING |
 | Catalog extensions (B1 games/platforms, B2 attribute schema, C-2 tightening + protected method change), OPS-2 code expiry | Phase 3 | IMPLEMENTATION_PENDING |
-| B12 order-time policy snapshot + defect/duplicate-payment review flows; final policy after legal review | Phase 3 | EXTERNAL_VALIDATION_REQUIRED |
+| B12 order-time policy snapshot — **IMPLEMENTED in P1-A**; defect/duplicate-payment review flows (P1-C) and the final policy after legal review still pending | Phase 3 | EXTERNAL_VALIDATION_REQUIRED |
 | Real gateway, SMS, supplier adapters; production KMS KeyProvider; RET-1 periods | when X1/X2/X3/D8/legal inputs exist | PRODUCTION_BLOCKER |
 
 ## Cross-cutting rules
@@ -57,3 +57,11 @@ Launch is blocked until every row above is implemented, tested and reviewed — 
 1. **2b-1a authorised and in progress** (reported separately); no further 2b step starts without separate approval.
 2. 2b-3 Identity (run #7) and 2b-4 Catalog + minimal pricing (run #8) CI-confirmed; 2b-5 Inventory CI-confirmed (run #9); 2b-6 Payments + Wallet CI-confirmed (run #10); 2b-7 Suppliers + Fulfillment CI-confirmed (run #11; generic adapter only, X3); 2b-8 Orders & Checkout implemented (PHASE_2B_8_NOTES.md; **settlement fails closed until D10, checkout until B3**); 2b-9 and later need separate approval.
 3. Decisions: direction APPROVED on 2026-11-11 for D10, B12, B13, B3, B5, B10, B7, B1, B2, C-2, D8, RET-1, X1–X3, ORD-1 (DECISIONS fourteenth review); still blocking production: accountant validation (D10), legal review (B12, RET-1), real gateway/SMS/supplier (X1–X3), production KMS (D8); B11 later modules.
+
+## Phase 1 sub-phases (assessment of 2026-11-02)
+| Sub-phase | Scope | Status |
+|---|---|---|
+| **P1-A** | ADM-1 settings foundation · B3 TTL (900 s) · B5 limits + Asia/Tehran daily limit · order-time policy snapshots (refund policy version, TTL, fulfilment rules) + backfill | **IMPLEMENTED** — migrations 0024/0025; details in DECISIONS (fifteenth review) |
+| P1-B | C-2 tightening + protected method change · B1/B2 catalog extensions · OPS-2 code expiry | not started — needs separate approval |
+| P1-C | B10 thresholds · B12/B13 review workflows | not started — needs separate approval |
+| P1-D | D10 `OrderPaymentPostingPolicy` | not started — blocked on accountant validation |
