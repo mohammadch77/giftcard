@@ -12,9 +12,11 @@ import { uuidv7 } from "@/platform/ids";
 import { enqueueOutbox } from "@/platform/outbox";
 import { setTransitionContext } from "@/platform/transitions";
 import { evaluateRefundPolicy, worstDisclosure } from "../domain/refund-policy";
-import type { DisclosureStateName, RefundDecision, RefundDestination, RefundExternalOutcome, RefundStatus } from "../domain/types";
+import { REFUND_REVIEW_REASONS } from "../domain/types";
+import type { DisclosureStateName, RefundDecision, RefundDestination, RefundExternalOutcome, RefundReviewReason, RefundStatus } from "../domain/types";
 import { ORDER_COLS, SYSTEM, first, iso, loadItems, moveOrder, unitRef } from "./core";
 import type { OrderRow, OrdersDeps } from "./core";
+import { getRefundThresholds } from "./settings";
 
 /**
  * REFUNDS (Phase 2b-9). Every rule here is either read from the versioned policy tables (B12 placeholders 'temporary-0') or is a
@@ -28,20 +30,39 @@ export type RefundRequester = { type: "CUSTOMER"; userId: string } | ({ type: "A
 
 export interface RefundView {
   id: string; orderId: string; holdId: string | null; source: "ORDER_PAYMENT" | "SUSPENSE_RECEIPT"; amount: number; destination: RefundDestination;
-  status: RefundStatus; decision: RefundDecision; policyVersion: string; externalOutcome: RefundExternalOutcome; attempts: number;
-  requestedBy: string; decidedBy: string | null; ledgerTxnId: number | null; reasonCode: string;
+  status: RefundStatus; decision: RefundDecision; policyVersion: string; thresholdVersion: number; tier: "TIER_1" | "TIER_2"; externalOutcome: RefundExternalOutcome; attempts: number;
+  requestedBy: string; decidedBy: string | null; ledgerTxnId: number | null; reasonCode: string; reviewReason: RefundReviewReason | null; evidenceReferences: string[];
 }
-const RCOLS = sql`id, order_id, hold_id, source, suspense_key, payment_id, requested_by, requester_type, reason_code, amount, destination, status, policy_version, decision, decided_by, override_reason, external_outcome, gateway_refund_ref, attempts, ledger_txn_id`;
+const RCOLS = sql`id, order_id, hold_id, source, suspense_key, payment_id, requested_by, requester_type, reason_code, amount, destination, status, threshold_version, tier, policy_version, decision, review_reason, evidence_references, decided_by, override_reason, external_outcome, gateway_refund_ref, attempts, ledger_txn_id`;
 interface RefundRow {
   id: string; order_id: string; hold_id: string | null; source: "ORDER_PAYMENT" | "SUSPENSE_RECEIPT"; suspense_key: string | null; payment_id: string | null; requested_by: string;
-  requester_type: string; reason_code: string; amount: string | number; destination: RefundDestination; status: RefundStatus; policy_version: string; decision: RefundDecision;
+  requester_type: string; reason_code: string; amount: string | number; destination: RefundDestination; status: RefundStatus; threshold_version: number; tier: "TIER_1" | "TIER_2";
+  policy_version: string; decision: RefundDecision; review_reason: RefundReviewReason | null; evidence_references: unknown;
   decided_by: string | null; override_reason: string | null; external_outcome: RefundExternalOutcome; gateway_refund_ref: string | null; attempts: number; ledger_txn_id: string | number | null;
 }
 const view = (r: RefundRow): RefundView => ({
   id: r.id, orderId: r.order_id, holdId: r.hold_id, source: r.source, amount: Number(r.amount), destination: r.destination, status: r.status, decision: r.decision, policyVersion: r.policy_version,
+  thresholdVersion: Number(r.threshold_version), tier: r.tier,
+  reviewReason: r.review_reason,
+  evidenceReferences: Array.isArray(r.evidence_references) ? (r.evidence_references as string[]) : typeof r.evidence_references === "string" ? JSON.parse(r.evidence_references) : [],
   externalOutcome: r.external_outcome, attempts: r.attempts, requestedBy: r.requested_by, decidedBy: r.decided_by, ledgerTxnId: r.ledger_txn_id === null ? null : Number(r.ledger_txn_id), reasonCode: r.reason_code,
 });
 const blocked = (m: string): DomainError => new DomainError("REFUND_BLOCKED", m);
+
+function sanitizeEvidenceReferences(refs?: readonly string[]): string[] {
+  if (!refs || refs.length === 0) return [];
+  if (refs.length > 20) throw new DomainError("REFUND_INVALID", "at most 20 evidence references allowed");
+  const sanitized: string[] = [];
+  for (const raw of refs) {
+    if (typeof raw !== "string") throw new DomainError("REFUND_INVALID", "evidence references must be strings");
+    const r = raw.trim();
+    if (r.length < 3 || r.length > 100) throw new DomainError("REFUND_INVALID", "evidence reference length must be between 3 and 100 characters");
+    if (!/^[A-Za-z0-9_.:#/-]{3,100}$/.test(r)) throw new DomainError("REFUND_INVALID", "evidence references must be safe identifiers");
+    if (/bearer|token|password|secret|apikey|cvv|\b\d{16}\b/i.test(r)) throw new DomainError("REFUND_INVALID", "evidence references cannot contain credentials or secrets");
+    if (!sanitized.includes(r)) sanitized.push(r);
+  }
+  return sanitized;
+}
 
 /**
  * Load a refund policy version's rules. With `version` (P1-A): exactly that version — an order is evaluated under the version recorded when
@@ -59,11 +80,17 @@ export async function loadPolicy(tx: Tx | Database, version?: string): Promise<{
 const PAID_LIVE = ["PAID", "FULFILLING", "PARTIALLY_COMPLETED", "COMPLETED"];
 
 /** Request a full-order refund. One live refund per order (DB-unique); an identical repeat returns the same refund. */
-export async function requestRefund(deps: OrdersDeps, by: RefundRequester, input: { orderId: string; destination: RefundDestination; reasonCode: string; holdId?: string }): Promise<{ refund: RefundView; replay: boolean }> {
+export async function requestRefund(
+  deps: OrdersDeps,
+  by: RefundRequester,
+  input: { orderId: string; destination: RefundDestination; reasonCode: string; holdId?: string; reviewReason?: RefundReviewReason; evidenceReferences?: string[] }
+): Promise<{ refund: RefundView; replay: boolean }> {
   if (!/^[A-Z_]{3,40}$/.test(input.reasonCode)) throw new DomainError("REFUND_INVALID", "reasonCode must be 3-40 upper-case letters/underscores");
+  if (input.reviewReason && !REFUND_REVIEW_REASONS.includes(input.reviewReason)) throw new DomainError("REFUND_INVALID", "invalid reviewReason");
+  const sanitizedRefs = sanitizeEvidenceReferences(input.evidenceReferences);
   if (by.type === "ADMIN") await by.authorize("orders.refunds.request");
   const requestedBy = by.type === "CUSTOMER" ? by.userId : by.actor.id;
-  const hash = createHash("sha256").update(JSON.stringify([input.orderId, input.holdId ?? null, input.destination, input.reasonCode])).digest("hex");
+  const hash = createHash("sha256").update(JSON.stringify([input.orderId, input.holdId ?? null, input.destination, input.reasonCode, input.reviewReason ?? null])).digest("hex");
   return withTransaction(deps.db, async (tx) => {
     const o = first<OrderRow>(await tx.execute(sql`select ${ORDER_COLS} from orders where id = ${input.orderId} for update`));
     if (!o || (by.type === "CUSTOMER" && o.user_ref !== by.userId)) throw new DomainError("ORDER_NOT_FOUND", "order not found");
@@ -78,19 +105,29 @@ export async function requestRefund(deps: OrdersDeps, by: RefundRequester, input
     let amount = Number(o.total);
     let states: { itemId: string; amount: number; state: DisclosureStateName }[] = [];
     let holdId: string | null = null;
+    let holdReason: string | null = null;
     if (input.holdId) {
       const h = first<{ id: string; order_id: string; reason: string; resolved_at: unknown }>(await tx.execute(sql`select id, order_id, reason, resolved_at from order_holds where id = ${input.holdId} for update`));
       if (!h || h.order_id !== o.id) throw new DomainError("ORDER_NOT_FOUND", "hold not found for this order");
       if (h.resolved_at) throw new DomainError("REFUND_INVALID", "hold is already resolved");
-      if (!o.payment_id) throw blocked("the hold has no gateway payment to refund");
-      if (h.reason !== "LATE_PAYMENT_NO_RESERVATION" && h.reason !== "PAYMENT_NEEDS_REVIEW") throw blocked(`holds of type ${h.reason} have no refund path`);
       if (o.status !== "ON_HOLD") throw new DomainError("REFUND_INVALID", "order is not on hold");
-      source = "SUSPENSE_RECEIPT";
-      suspenseKey = `${h.reason === "LATE_PAYMENT_NO_RESERVATION" ? "late" : "payrecv"}:${o.payment_id}`;
-      const parked = await findTransactionByKey(tx, suspenseKey);
-      if (!parked) throw blocked("the received money is not parked in suspense; nothing safe to refund");
-      amount = Math.max(...parked.entries.map((e) => Number(e.amount)));
+      holdReason = h.reason;
       holdId = h.id;
+
+      const parkedLate = o.payment_id ? await findTransactionByKey(tx, `late:${o.payment_id}`) : null;
+      const parkedPayrecv = o.payment_id ? await findTransactionByKey(tx, `payrecv:${o.payment_id}`) : null;
+      const parked = parkedLate ?? parkedPayrecv;
+
+      if (parked) {
+        source = "SUSPENSE_RECEIPT";
+        suspenseKey = parked.idempotencyKey;
+        amount = Math.max(...parked.entries.map((e) => Number(e.amount)));
+      } else if (o.settlement_ledger_txn_id !== null) {
+        source = "ORDER_PAYMENT";
+        amount = Number(o.total);
+      } else {
+        throw blocked("the received money is not parked in suspense and there is no settlement posting; nothing safe to refund");
+      }
     } else {
       if (!PAID_LIVE.includes(o.status) || o.payment_status !== "SUCCEEDED") throw new DomainError("REFUND_INVALID", `order is ${o.status}; only a paid order (or a payment hold) can be refunded`);
       if (o.payment_method !== input.destination) throw blocked(`a ${o.payment_method}-paid order can only be refunded to ${o.payment_method} (other conversions need the accountant's decision, D10)`);
@@ -104,21 +141,42 @@ export async function requestRefund(deps: OrdersDeps, by: RefundRequester, input
     }
     if (source === "SUSPENSE_RECEIPT") states = [];
     if (input.destination === "GATEWAY" && !o.payment_id) throw blocked("this order has no gateway payment");
-    const decision: RefundDecision = source === "SUSPENSE_RECEIPT" ? "ELIGIBLE" : evaluateRefundPolicy(policy.rules, states.map((s) => s.state));
+
+    const policyDecision = states.length > 0 ? evaluateRefundPolicy(policy.rules, states.map((s) => s.state)) : "ELIGIBLE";
+    const hasRevealed = states.some((s) => s.state === "REVEALED_BY_CUSTOMER" || s.state === "REVEALED_BY_ADMIN_ONLY");
+
+    let decision: RefundDecision;
+    if (hasRevealed || input.reviewReason === "REVEALED_DISPUTE" || policyDecision === "OVERRIDE_REQUIRED") {
+      decision = "OVERRIDE_REQUIRED";
+    } else if (policyDecision === "DENIED") {
+      decision = "DENIED";
+    } else if (
+      input.reviewReason !== undefined ||
+      policyDecision === "REVIEW_REQUIRED" ||
+      (input.holdId && holdReason !== "LATE_PAYMENT_NO_RESERVATION")
+    ) {
+      decision = "REVIEW_REQUIRED";
+    } else {
+      decision = "ELIGIBLE";
+    }
+
+    const threshold = await getRefundThresholds(tx);
+    const tier: "TIER_1" | "TIER_2" = amount > threshold.values.requiresTier2AboveRial ? "TIER_2" : "TIER_1";
+
     const id = uuidv7(deps.clock);
     const now = iso(deps.clock.now());
     await setTransitionContext(tx, { actorId: requestedBy, reason: "refund requested" });
-    await tx.execute(sql`insert into refunds (id, order_id, hold_id, source, suspense_key, payment_id, requested_by, requester_type, reason_code, amount, destination, status, policy_version, eligibility_snapshot, decision, request_hash, created_at, updated_at)
-      values (${id}, ${o.id}, ${holdId}, ${source}, ${suspenseKey}, ${o.payment_id}, ${requestedBy}, ${by.type}, ${input.reasonCode}, ${amount}, ${input.destination}, 'REQUESTED', ${policy.version},
-              ${JSON.stringify({ policyVersion: policy.version, items: states, source })}::jsonb, ${decision}, decode(${hash}, 'hex'), ${now}::timestamptz, ${now}::timestamptz)`);
+    await tx.execute(sql`insert into refunds (id, order_id, hold_id, source, suspense_key, payment_id, requested_by, requester_type, reason_code, amount, destination, status, threshold_version, tier, policy_version, eligibility_snapshot, evidence_references, decision, review_reason, request_hash, created_at, updated_at)
+      values (${id}, ${o.id}, ${holdId}, ${source}, ${suspenseKey}, ${o.payment_id}, ${requestedBy}, ${by.type}, ${input.reasonCode}, ${amount}, ${input.destination}, 'REQUESTED', ${threshold.version}, ${tier}, ${policy.version},
+              ${JSON.stringify({ policyVersion: policy.version, items: states, source })}::jsonb, ${JSON.stringify(sanitizedRefs)}::jsonb, ${decision}, ${input.reviewReason ?? null}, decode(${hash}, 'hex'), ${now}::timestamptz, ${now}::timestamptz)`);
     for (const s of states) await tx.execute(sql`insert into refund_items (id, refund_id, order_item_id, amount, disclosure_state) values (${uuidv7(deps.clock)}, ${id}, ${s.itemId}, ${s.amount}, ${s.state})`);
-    await recordAudit(tx, { actor: by.type === "CUSTOMER" ? { type: "USER", id: by.userId } : by.actor, action: "orders.refund.requested", entity: { type: "refund", id }, metadata: { orderId: o.id, amount, destination: input.destination, decision, source }, occurredAt: deps.clock.now() });
+    await recordAudit(tx, { actor: by.type === "CUSTOMER" ? { type: "USER", id: by.userId } : by.actor, action: "orders.refund.requested", entity: { type: "refund", id }, metadata: { orderId: o.id, amount, destination: input.destination, decision, source, tier, thresholdVersion: threshold.version, reviewReason: input.reviewReason ?? null }, occurredAt: deps.clock.now() });
     const row = first<RefundRow>(await tx.execute(sql`select ${RCOLS} from refunds where id = ${id}`))!;
     return { refund: view(row), replay: false };
   });
 }
 
-/** Approve (four-eyes: never your own request; override for revealed items needs its own permission + written reason; DENIED can never be approved). */
+/** Approve (four-eyes: never your own request; tier-2 needs elevated permission; override for revealed items needs its own permission + written reason; DENIED can never be approved). */
 export async function approveRefund(deps: OrdersDeps, admin: RefundAdmin, refundId: string, input: { note: string; overrideReason?: string }): Promise<RefundView> {
   await admin.authorize("orders.refunds.approve");
   if (input.note.trim().length < 10) throw new DomainError("REFUND_INVALID", "a note of at least 10 characters is required");
@@ -128,6 +186,9 @@ export async function approveRefund(deps: OrdersDeps, admin: RefundAdmin, refund
     if (r.status === "APPROVED" && r.decided_by === admin.actor.id) return view(r); // idempotent replay by the same approver
     if (r.status !== "REQUESTED") throw new DomainError("REFUND_INVALID", `refund is ${r.status}`);
     if (r.requested_by === admin.actor.id) throw new DomainError("REFUND_INVALID", "the requester cannot approve their own refund");
+    if (r.tier === "TIER_2") {
+      await admin.authorize("orders.refunds.approve_tier2");
+    }
     if (r.decision === "DENIED") throw new DomainError("REFUND_INVALID", "the policy denies this refund");
     if (r.decision === "OVERRIDE_REQUIRED") {
       await admin.authorize("orders.refunds.override_revealed");
@@ -135,7 +196,7 @@ export async function approveRefund(deps: OrdersDeps, admin: RefundAdmin, refund
     }
     await setTransitionContext(tx, { actorId: admin.actor.id, reason: "refund approved" });
     await tx.execute(sql`update refunds set status = 'APPROVED', decided_by = ${admin.actor.id}, decided_at = ${iso(deps.clock.now())}::timestamptz, decision_note = ${input.note.trim()}, override_reason = ${r.decision === "OVERRIDE_REQUIRED" ? input.overrideReason!.trim() : null}, updated_at = ${iso(deps.clock.now())}::timestamptz where id = ${refundId}`);
-    await recordAudit(tx, { actor: admin.actor, action: "orders.refund.approved", entity: { type: "refund", id: refundId }, metadata: { decision: r.decision, override: r.decision === "OVERRIDE_REQUIRED" }, occurredAt: deps.clock.now() });
+    await recordAudit(tx, { actor: admin.actor, action: "orders.refund.approved", entity: { type: "refund", id: refundId }, metadata: { decision: r.decision, override: r.decision === "OVERRIDE_REQUIRED", tier: r.tier }, occurredAt: deps.clock.now() });
     return view(first<RefundRow>(await tx.execute(sql`select ${RCOLS} from refunds where id = ${refundId}`))!);
   });
 }
@@ -251,6 +312,38 @@ export async function executeRefund(deps: OrdersDeps, admin: RefundAdmin, refund
     await finalize(tx, deps, cur, o, admin.actor);
   });
   return { status: "COMPLETED", outcome: "CONFIRMED", replay: false };
+}
+
+/**
+ * Manual investigation for ambiguous (UNKNOWN) gateway refund outcomes (B13).
+ * When an external refund call timed out or returned an ambiguous outcome, an admin investigates
+ * with the gateway, records the verified reference and confirmed/rejected status, and drives completion.
+ */
+export async function recordGatewayRefundInvestigation(
+  deps: OrdersDeps,
+  admin: RefundAdmin,
+  refundId: string,
+  input: { outcome: "CONFIRMED" | "REJECTED"; gatewayRefundRef: string; verifiedAmount: number; note: string }
+): Promise<RefundExecResult> {
+  await admin.authorize("orders.refunds.execute");
+  if (input.note.trim().length < 10) throw new DomainError("REFUND_INVALID", "an investigation note of at least 10 characters is required");
+  if (!/^[A-Za-z0-9_-]{3,80}$/.test(input.gatewayRefundRef.trim())) throw new DomainError("REFUND_INVALID", "invalid gatewayRefundRef");
+
+  await withTransaction(deps.db, async (tx) => {
+    const cur = first<RefundRow>(await tx.execute(sql`select ${RCOLS} from refunds where id = ${refundId} for update`));
+    if (!cur) throw new DomainError("REFUND_NOT_FOUND", "refund not found");
+    if (cur.status === "COMPLETED") return;
+    if (cur.status !== "PROCESSING" && cur.status !== "FAILED") throw new DomainError("REFUND_INVALID", `refund is ${cur.status}; only PROCESSING or FAILED refunds can be investigated`);
+    if (input.outcome === "CONFIRMED") {
+      if (input.verifiedAmount !== Number(cur.amount)) throw new DomainError("REFUND_INVALID", "verifiedAmount does not match refund amount");
+    }
+    const rejected = input.outcome === "REJECTED";
+    await setTransitionContext(tx, { actorId: admin.actor.id, reason: input.note.trim() });
+    await tx.execute(sql`update refunds set external_outcome = ${input.outcome}, gateway_refund_ref = ${input.gatewayRefundRef.trim()}, ${rejected ? sql`status = 'FAILED',` : sql``} updated_at = ${iso(deps.clock.now())}::timestamptz where id = ${refundId}`);
+    await recordAudit(tx, { actor: admin.actor, action: "orders.refund.investigation_recorded", entity: { type: "refund", id: refundId }, metadata: { outcome: input.outcome, ref: input.gatewayRefundRef.trim(), note: input.note.trim() }, occurredAt: deps.clock.now() });
+  });
+
+  return executeRefund(deps, admin, refundId);
 }
 
 async function auditOnly(deps: OrdersDeps, action: string, refundId: string, metadata: Record<string, unknown>): Promise<void> {

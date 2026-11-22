@@ -11,5 +11,5 @@ export { completeTopUp, decideAdjustment, findIncompleteSucceededTopUps, getTopU
 export type { StartTopUpResult, TopUpView, WalletAdminContext } from "./application/wallet";
 export { WALLET_PERMISSIONS } from "./domain/permissions";
 export type { WalletPermissionDef } from "./domain/permissions";
-export { TOPUP_DAILY_TIMEZONE, TOPUP_LIMIT_BOUNDS, dailyTopUpTotal, decideLimitChange, getTopUpLimits, getTopUpLimitsAdmin, requestLimitChange, tehranDayWindow } from "./application/settings";
-export type { TopUpLimitValues, TopUpLimits, WalletSettingsAdmin } from "./application/settings";
+export { TOPUP_DAILY_TIMEZONE, TOPUP_LIMIT_BOUNDS, WALLET_ADJUSTMENT_THRESHOLD_BOUNDS, dailyTopUpTotal, decideAdjustmentThresholdChange, decideLimitChange, getAdjustmentThresholds, getAdjustmentThresholdsAdmin, getTopUpLimits, getTopUpLimitsAdmin, requestAdjustmentThresholdChange, requestLimitChange, tehranDayWindow } from "./application/settings";
+export type { AdjustmentThresholdValues, AdjustmentThresholds, TopUpLimitValues, TopUpLimits, WalletSettingsAdmin } from "./application/settings";

@@ -6,7 +6,10 @@ import { afterAll, describe, expect, it } from "vitest";
 import allowed from "../../architecture/module-deps.cjs";
 
 const repo = path.resolve(__dirname, "../..");
-const depcruiseBin = path.join(repo, "node_modules/.bin/depcruise");
+const depcruiseBin = path.join(
+  repo,
+  process.platform === "win32" ? "node_modules/.bin/depcruise.cmd" : "node_modules/.bin/depcruise",
+);
 const config = path.join(repo, ".dependency-cruiser.cjs");
 const tmpRoots: string[] = [];
 
@@ -26,7 +29,11 @@ function violationsOf(cwd: string): string[] {
   // The json reporter may exit 0 even when violations exist, so always parse the report.
   let out: string;
   try {
-    out = execFileSync(depcruiseBin, ["src", "--config", config, "--output-type", "json"], { cwd, stdio: "pipe" }).toString();
+    out = execFileSync(depcruiseBin, ["src", "--config", config, "--output-type", "json"], {
+      cwd,
+      stdio: "pipe",
+      shell: process.platform === "win32",
+    }).toString();
   } catch (e) {
     out = (e as { stdout?: Buffer }).stdout?.toString() ?? "";
   }

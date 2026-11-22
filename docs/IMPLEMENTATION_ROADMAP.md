@@ -62,6 +62,6 @@ Launch is blocked until every row above is implemented, tested and reviewed — 
 | Sub-phase | Scope | Status |
 |---|---|---|
 | **P1-A** | ADM-1 settings foundation · B3 TTL (900 s) · B5 limits + Asia/Tehran daily limit · order-time policy snapshots (refund policy version, TTL, fulfilment rules) + backfill | **IMPLEMENTED** — migrations 0024/0025; details in DECISIONS (fifteenth review) |
-| **P1-B** | C-2 matrix + protected method change (usage probes, change log, DB-enforced) · B1/B2 games, platforms, regions, typed game-account attributes · OPS-2 optional code expiry + sweeper | **IMPLEMENTED (migrations 0026/0027)** — awaiting review; see DECISIONS sixteenth review |
-| P1-C | B10 thresholds · B12/B13 review workflows | not started — needs separate approval |
+| **P1-B** | C-2 matrix + protected method change (usage probes, change log, DB-enforced) · B1/B2 games, platforms, regions, typed game-account attributes · OPS-2 optional code expiry + sweeper | **IMPLEMENTED** — migrations 0026/0027; finalized decisions (flexible supplier products, both account models, manual code expiry review, customer expiry display, replacement codes, blocked new sales for grandfathered variants, game account legal restriction) in DECISIONS seventeenth review |
+| **P1-C** | B10 financial approval thresholds (foundation, two-person floor, tier-2 approval) · B12 refund review workflows (case classification, evidence refs, hold refund paths) · B13 execution safety (no blind resend, exact amount/ref verification, manual investigation) | **IMPLEMENTED** — migrations 0028/0029; see DECISIONS seventeenth review |
 | P1-D | D10 `OrderPaymentPostingPolicy` | not started — blocked on accountant validation |

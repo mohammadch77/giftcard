@@ -4,7 +4,11 @@ export const WALLET_PERMISSIONS: readonly WalletPermissionDef[] = [
   { key: "wallet.read", description: "View a customer's wallet balance", sensitive: false },
   { key: "wallet.adjust.request", description: "Request a manual wallet credit/debit", sensitive: true },
   { key: "wallet.adjust.approve", description: "Approve or reject a manual wallet adjustment requested by someone else", sensitive: true },
+  { key: "wallet.adjust.approve_tier2", description: "Approve or reject a manual wallet adjustment exceeding tier-1 threshold requested by someone else", sensitive: true },
   { key: "wallet.settings.read", description: "View wallet top-up limits", sensitive: false },
   { key: "wallet.settings.request", description: "Request a change of the wallet top-up limits (needs a second administrator to approve)", sensitive: true },
   { key: "wallet.settings.approve", description: "Approve or reject a change of the wallet top-up limits requested by someone else", sensitive: true },
+  { key: "wallet.settings.thresholds.read", description: "View wallet adjustment approval thresholds", sensitive: false },
+  { key: "wallet.settings.thresholds.request", description: "Request a change of the wallet adjustment approval thresholds", sensitive: true },
+  { key: "wallet.settings.thresholds.approve", description: "Approve or reject a change of the wallet adjustment approval thresholds requested by someone else", sensitive: true },
 ];

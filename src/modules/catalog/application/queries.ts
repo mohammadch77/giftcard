@@ -32,7 +32,10 @@ function idList(ids: readonly string[]) {
  */
 export async function getPriceableVariants(tx: Tx | Database, ids: readonly string[], opts: { lockShare?: boolean } = {}): Promise<PriceableVariant[]> {
   const r = await tx.execute(
-    sql`select v.id, v.price, v.sale_price, v.sale_starts_at, v.sale_ends_at, (v.status = 'PUBLISHED' and p.status = 'PUBLISHED' and v.availability = 'AVAILABLE') as sellable
+    sql`select v.id, v.price, v.sale_price, v.sale_starts_at, v.sale_ends_at,
+          (v.status = 'PUBLISHED' and p.status = 'PUBLISHED' and v.availability = 'AVAILABLE'
+           and exists (select 1 from product_type_fulfillment ptf where ptf.product_type = p.type and ptf.method = v.fulfillment_method)
+           and (p.type <> 'GAME_ACCOUNT' or exists (select 1 from catalog_legal_reviews clr where clr.scope = 'GAME_ACCOUNT' and clr.status = 'APPROVED'))) as sellable
           from product_variants v join products p on p.id = v.product_id
          where v.id in (${idList(ids)}) order by v.id ${opts.lockShare ? sql`for share of v` : sql``}`,
   );
@@ -71,7 +74,9 @@ const SNAPSHOT_SELECT = sql`select v.id as variant_id, p.id as product_id, p.slu
   v.sku, v.name, r.code as region_code, v.face_value, v.face_currency, v.duration_days, v.fulfillment_method, v.attrs, v.availability,
   g.slug as game_slug, g.name as game_name, pl.slug as platform_slug, pl.name as platform_name,
   ga.account_type, ga.level as account_level, ga.included_items, ga.features,
-  (v.status = 'PUBLISHED' and p.status = 'PUBLISHED' and v.availability = 'AVAILABLE') as sellable
+  (v.status = 'PUBLISHED' and p.status = 'PUBLISHED' and v.availability = 'AVAILABLE'
+   and exists (select 1 from product_type_fulfillment ptf where ptf.product_type = p.type and ptf.method = v.fulfillment_method)
+   and (p.type <> 'GAME_ACCOUNT' or exists (select 1 from catalog_legal_reviews clr where clr.scope = 'GAME_ACCOUNT' and clr.status = 'APPROVED'))) as sellable
   from product_variants v join products p on p.id = v.product_id join brands b on b.id = p.brand_id left join regions r on r.id = v.region_id
   left join games g on g.id = p.game_id left join platforms pl on pl.id = v.platform_id left join game_account_attributes ga on ga.variant_id = v.id`;
 
@@ -110,7 +115,13 @@ export interface ListFilters { brandSlug?: string; categorySlug?: string; type?:
 export async function listPublished(db: Database | Tx, f: ListFilters = {}): Promise<{ items: VariantSnapshot[]; next: string | null }> {
   const limit = Math.min(Math.max(f.limit ?? 24, 1), 100);
   if (f.after !== undefined && !isUuid(f.after)) throw new DomainError("CATALOG_INVALID", "invalid cursor");
-  const conds = [sql`v.status = 'PUBLISHED'`, sql`p.status = 'PUBLISHED'`, sql`v.availability = 'AVAILABLE'`];
+  const conds = [
+    sql`v.status = 'PUBLISHED'`,
+    sql`p.status = 'PUBLISHED'`,
+    sql`v.availability = 'AVAILABLE'`,
+    sql`exists (select 1 from product_type_fulfillment ptf where ptf.product_type = p.type and ptf.method = v.fulfillment_method)`,
+    sql`(p.type <> 'GAME_ACCOUNT' or exists (select 1 from catalog_legal_reviews clr where clr.scope = 'GAME_ACCOUNT' and clr.status = 'APPROVED'))`,
+  ];
   if (f.brandSlug) conds.push(sql`b.slug = ${f.brandSlug}`);
   if (f.type) conds.push(sql`p.type = ${f.type}`);
   if (f.categorySlug) conds.push(sql`p.category_id = (select id from categories where slug = ${f.categorySlug})`);

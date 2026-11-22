@@ -83,17 +83,25 @@ See `SECURITY.md §12`: sanctions and publisher ToS for foreign gaming products,
 | TOPUP-1 | An abandoned in-flight top-up (REQUESTED, never confirmed) counts against the daily limit until its payment is failed/closed. | Needs a payment/top-up expiry sweeper (ORD-1 workers); not invented here. |
 | LOCAL-DOCKER | Local PostgreSQL for tests runs in a Docker container (exception to D7 for local testing only; see DECISIONS fifteenth review). | None. |
 
-## P1-B follow-ups (2026-11-03)
-| ID | Item | Note |
+## P1-B follow-ups (2026-11-03) — Resolved in P1-C
+| ID | Item | Resolution / Status |
 |---|---|---|
-| C-2b | The approved direction names four groups (gift cards and digital codes, game accounts, subscriptions, supplier products) but the catalog has six product types. **DIGITAL_SERVICE (MANUAL/SUPPLIER_API) and OTHER (all three) were left exactly as they were.** Should "supplier products" be DIGITAL_SERVICE → SUPPLIER_API only, and "digital codes" a type of their own (or OTHER → AUTO_CODE)? | Owner decision; changing the matrix is one forward migration plus the mirror constant, both pinned by tests. No data depends on it yet. |
-| C-2c | Variants that the tightened matrix no longer allows are *grandfathered* (they keep selling if already published, but cannot be published again). Should grandfathered *published* variants be unpublished automatically? | Business call; `listIncompatibleVariants` shows them. No real data is loaded, so none exist in production. |
+| C-2b | Supplier products and matrix groups: should supplier products be restricted to SUPPLIER_API? | **RESOLVED (2026-11-22):** Supplier-provided products are NOT universally restricted to SUPPLIER_API. Preserve flexible fulfillment methods where compatible with product type and actual fulfillment workflow. Existing matrix is not weakened; DIGITAL_SERVICE and OTHER remain unchanged. |
+| C-2c | Should grandfathered published variants be unpublished automatically? | **RESOLVED (2026-11-22):** Do not automatically unpublish or rewrite existing variants during migration. However, prevent new sales and new publication of incompatible variants until they are corrected through the protected fulfillment-change workflow. |
 | C-2d | The four usage probes must be injected into the catalog `AdminContext` by the composition root once admin/HTTP wiring exists; without them the protected change refuses. | Phase 4 wiring (HTTP-1). |
 | B1-DATA | Real launch games, platforms, regions and their relationships (nothing is seeded or hardcoded). | Owner supplies the launch catalog (B1). |
-| B2-LEGAL | **Account sharing and game-platform Terms of Service.** Selling or sharing game accounts may breach a platform's or publisher's terms and may expose the store to account bans, chargebacks or claims. Account-type codes (e.g. `FULL_ACCESS`, `SHARED`) are **descriptive tags only**; no legal category, warranty or customer-facing promise is encoded. | Legal review required before any game-account product goes live (existing B2 item). |
-| B2-STOCK | Game accounts are MANUAL (counted stock + a human completes the task with a sealed credential). Are accounts *pre-loaded* (stock) or *created per order*? With MANUAL the stock is a counter; per-account inventory would need a different fulfilment method and a matrix change. | Part of the existing B2 question. |
-| OPS-2a | Should the customer see a sold code's expiry date (and a warning near it)? Today it is stored and never shown. | Needs a UI/notification decision (Phase 4 / B7 wording). |
-| OPS-2b | An EXPIRED code keeps its fingerprint, so re-importing the same code (a supplier re-issuing/renewing it) is a *duplicate* and is skipped. Renewal semantics are unknown. | Wait for real supplier data (X3); no policy invented. |
-| OPS-2c | Refund/replacement treatment of a code that expires *after* it was sold (not delivered in time, or the customer did not redeem it) is a business/legal matter. The system keeps it SOLD and unchanged. | Part of RF-OPEN-1 / B12 legal review. |
+| B2-LEGAL | **Account sharing and game-platform Terms of Service.** | **RESOLVED (2026-11-22):** Policy established: game-account products must not become publicly publishable or purchasable until legal review has been completed and explicitly recorded server-side. Do not invent or assume legal approval. External legal review remains an open production blocker until legal counsel completes review. |
+| B2-STOCK | Are accounts pre-loaded (stock) or created per order? | **RESOLVED (2026-11-22):** Support both models: preloaded accounts held as inventory and reserved before fulfillment, and per-order account creation or supplier provisioning after purchase. Explicit, validated strategies; encryption and credential isolation preserved. |
+| OPS-2a | Customer expiry visibility. | **RESOLVED (2026-11-22):** Display expiry dates when a valid date is available from a trusted supplier or inventory source. Never invent or infer expiry dates. |
+| OPS-2b | Supplier replacement codes. | **RESOLVED (2026-11-22):** Preserve expired original codes and their audit history. A replacement code must be a new inventory record with its own fingerprint, lifecycle, source and audit trail. Never overwrite the original code or its historical state. |
+| OPS-2c | Code expiry after sale. | **RESOLVED (2026-11-22):** A code that was valid at the time of sale must not receive an automatic refund merely because its expiry date passes later. Customer reports of validity/delivery issues route through manual review. Never auto-void a delivered code solely because expiry passed. |
 | OPS-2d | The expiry sweeper (`expireDueCodes`) is not scheduled: no scheduler exists for any sweeper yet (ORD-1). It is safe to run from many workers and can be triggered by an administrator meanwhile. Not running it is safe: expired codes are already unavailable and unreservable. | Workers/schedulers (ORD-1, RF-OPEN-2). |
 | OPS-2e | Counted (MANUAL) stock has no per-unit expiry; expiry applies to itemised codes/accounts only. | Revisit only if a supplier gives dated counted stock. |
+
+## P1-C follow-ups (2026-11-22)
+| ID | Item | Note |
+|---|---|---|
+| B10-PROD | Approved production threshold amounts for wallet adjustments and refunds. | The safe configuration foundation, two-person floor and tier-2 approval logic are implemented; no arbitrary production amounts were invented; retain strongest approval behavior until business owner approves specific thresholds. |
+| B12-LEGAL | Final legal refund policy terms and consumer protection review. | Safe review workflows and classification exist; `temporary-0` remains non-final until legal review is completed. |
+| B13-GATEWAY | Real payment gateway refund adapter and documentation verification. | Generic 3-phase protocol, idempotency protection and manual investigation implemented; real gateway integration remains blocked on provider choice (X1). |
+

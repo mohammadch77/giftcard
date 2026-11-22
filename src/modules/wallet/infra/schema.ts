@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { bigint, check, integer, customType, index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { bigint, boolean, check, customType, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 /**
  * Wallet tables — private to the wallet module. The BALANCE is never stored here: it is the ledger's
@@ -39,7 +39,7 @@ export const walletTopups = pgTable(
   ],
 );
 
-/** Administrative wallet adjustments ALWAYS need two different admins (B10 thresholds are open, so no exemption exists). */
+/** Administrative wallet adjustments ALWAYS need two different admins (B10 thresholds foundation, fail-closed). */
 export const walletAdjustments = pgTable(
   "wallet_adjustments",
   {
@@ -49,6 +49,8 @@ export const walletAdjustments = pgTable(
     amount: rialAmount("amount").notNull(),
     reason: text("reason").notNull(),
     status: text("status").notNull().default("REQUESTED"),
+    thresholdVersion: integer("threshold_version").notNull(),
+    tier: text("tier").notNull(),
     requestedBy: text("requested_by").notNull(),
     decidedBy: text("decided_by"),
     decisionReason: text("decision_reason"),
@@ -59,6 +61,7 @@ export const walletAdjustments = pgTable(
   (t) => [
     check("wallet_adjustments_direction", sql`${t.direction} in ('CREDIT','DEBIT')`),
     check("wallet_adjustments_status", sql`${t.status} in ('REQUESTED','COMPLETED','REJECTED')`),
+    check("wallet_adjustments_tier", sql`${t.tier} in ('TIER_1','TIER_2')`),
     check("wallet_adjustments_amount", sql`${t.amount} > 0`),
     check("wallet_adjustments_reason", sql`char_length(btrim(${t.reason})) >= 10`),
     check("wallet_adjustments_four_eyes", sql`${t.decidedBy} is null or ${t.decidedBy} <> ${t.requestedBy}`),
@@ -112,5 +115,44 @@ export const walletLimitVersions = pgTable(
         or (${t.status} = 'REJECTED' and ${t.decidedBy} is not null and ${t.decidedAt} is not null and ${t.approvedSeq} is null and ${t.decidedBy} <> ${t.requestedBy} and char_length(btrim(coalesce(${t.decisionReason}, ''))) >= 5)`,
     ),
     index("wallet_limit_open_idx").on(t.createdAt).where(sql`${t.status} = 'REQUESTED'`),
+  ],
+);
+
+/**
+ * Adjustment approval thresholds (B10), module-owned and versioned. FINANCIAL setting => TWO-PERSON:
+ * a change is REQUESTED by one administrator and APPROVED/REJECTED by a different one (CHECK, cannot be configured away).
+ * autoApprovalAllowed = false is enforced by DB CHECK (two-person floor cannot be disabled).
+ */
+export const walletAdjustmentThresholdVersions = pgTable(
+  "wallet_adjustment_threshold_versions",
+  {
+    id: uuid("id").primaryKey(),
+    requiresTier2AboveRial: rialAmount("requires_tier2_above_rial").notNull(),
+    autoApprovalAllowed: boolean("auto_approval_allowed").notNull().default(false),
+    source: text("source").notNull(),
+    status: text("status").notNull(),
+    baseSeq: integer("base_seq"),
+    approvedSeq: integer("approved_seq"),
+    requestedBy: text("requested_by").notNull(),
+    reason: text("reason").notNull(),
+    decidedBy: text("decided_by"),
+    decisionReason: text("decision_reason"),
+    createdAt: ts("created_at").notNull(),
+    decidedAt: ts("decided_at"),
+  },
+  (t) => [
+    uniqueIndex("wallet_adj_threshold_approved_seq_uq").on(t.approvedSeq).where(sql`${t.approvedSeq} is not null`),
+    check("wallet_adj_threshold_status", sql`${t.status} in ('REQUESTED','APPROVED','REJECTED')`),
+    check("wallet_adj_threshold_source", sql`${t.source} in ('SEED','ADMIN')`),
+    check("wallet_adj_threshold_bounds", sql`${t.requiresTier2AboveRial} >= 0 and ${t.requiresTier2AboveRial} % 10 = 0 and ${t.requiresTier2AboveRial} <= 1000000000000`),
+    check("wallet_adj_threshold_auto_approval", sql`${t.autoApprovalAllowed} = false`),
+    check("wallet_adj_threshold_reason", sql`char_length(btrim(${t.reason})) >= 10`),
+    check(
+      "wallet_adj_threshold_decision",
+      sql`(${t.status} = 'REQUESTED' and ${t.decidedBy} is null and ${t.decidedAt} is null and ${t.approvedSeq} is null)
+        or (${t.status} = 'APPROVED' and ${t.decidedBy} is not null and ${t.decidedAt} is not null and ${t.approvedSeq} is not null and ${t.decidedBy} <> ${t.requestedBy} and char_length(btrim(coalesce(${t.decisionReason}, ''))) >= 5)
+        or (${t.status} = 'REJECTED' and ${t.decidedBy} is not null and ${t.decidedAt} is not null and ${t.approvedSeq} is null and ${t.decidedBy} <> ${t.requestedBy} and char_length(btrim(coalesce(${t.decisionReason}, ''))) >= 5)`,
+    ),
+    index("wallet_adj_threshold_open_idx").on(t.createdAt).where(sql`${t.status} = 'REQUESTED'`),
   ],
 );

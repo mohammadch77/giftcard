@@ -158,9 +158,13 @@ export const refunds = pgTable(
     amount: rialAmount("amount").notNull(),
     destination: text("destination").notNull(),
     status: text("status").notNull().default("REQUESTED"),
+    thresholdVersion: integer("threshold_version").notNull(),
+    tier: text("tier").notNull(),
     policyVersion: text("policy_version").notNull().references(() => refundPolicyVersions.version),
     eligibilitySnapshot: jsonb("eligibility_snapshot").notNull(),
+    evidenceReferences: jsonb("evidence_references").notNull().default(sql`'[]'::jsonb`),
     decision: text("decision").notNull(),
+    reviewReason: text("review_reason"),
     decidedBy: text("decided_by"),
     decidedAt: ts("decided_at"),
     decisionNote: text("decision_note"),
@@ -180,8 +184,11 @@ export const refunds = pgTable(
     check("refunds_status", sql`${t.status} in ('REQUESTED','APPROVED','REJECTED','PROCESSING','COMPLETED','FAILED')`),
     check("refunds_source", sql`(${t.source} = 'ORDER_PAYMENT' and ${t.suspenseKey} is null) or (${t.source} = 'SUSPENSE_RECEIPT' and ${t.suspenseKey} is not null and ${t.holdId} is not null)`),
     check("refunds_destination", sql`${t.destination} in ('WALLET','GATEWAY')`),
+    check("refunds_tier", sql`${t.tier} in ('TIER_1','TIER_2')`),
     check("refunds_requester", sql`${t.requesterType} in ('CUSTOMER','ADMIN')`),
     check("refunds_decision", sql`${t.decision} in ('ELIGIBLE','REVIEW_REQUIRED','OVERRIDE_REQUIRED','DENIED')`),
+    check("refunds_review_reason", sql`${t.reviewReason} is null or ${t.reviewReason} in ('DEFECTIVE_PRODUCT','INCORRECT_PRODUCT','MISREPRESENTED_PRODUCT','DUPLICATE_PAYMENT','SUPPLIER_FAILURE','SUPPLIER_UNKNOWN','FRAUD_REVIEW','FULFILLMENT_FAILURE','CUSTOMER_DISPUTE','REVEALED_DISPUTE')`),
+    check("refunds_evidence_references", sql`jsonb_typeof(${t.evidenceReferences}) = 'array' and jsonb_array_length(${t.evidenceReferences}) <= 20 and pg_column_size(${t.evidenceReferences}) <= 8192`),
     check("refunds_outcome", sql`${t.externalOutcome} in ('NONE','ACCEPTED','UNKNOWN','CONFIRMED','REJECTED')`),
     check("refunds_amount", sql`${t.amount} > 0`),
     check("refunds_gateway_needs_payment", sql`${t.destination} <> 'GATEWAY' or ${t.paymentId} is not null`),
@@ -265,5 +272,44 @@ export const orderSettingsVersions = pgTable(
     check("order_settings_source", sql`${t.source} in ('SEED','ADMIN')`),
     check("order_settings_reason", sql`char_length(btrim(${t.reason})) >= 10`),
     check("order_settings_chain", sql`(${t.version} = 1 and ${t.previousVersion} is null) or (${t.version} > 1 and ${t.previousVersion} = ${t.version} - 1)`),
+  ],
+);
+
+/**
+ * Refund approval thresholds (B10), module-owned and versioned. FINANCIAL setting => TWO-PERSON:
+ * a change is REQUESTED by one administrator and APPROVED/REJECTED by a different one (CHECK, cannot be configured away).
+ * autoApprovalAllowed = false is enforced by DB CHECK (two-person floor cannot be disabled).
+ */
+export const refundThresholdVersions = pgTable(
+  "refund_threshold_versions",
+  {
+    id: uuid("id").primaryKey(),
+    requiresTier2AboveRial: rialAmount("requires_tier2_above_rial").notNull(),
+    autoApprovalAllowed: boolean("auto_approval_allowed").notNull().default(false),
+    source: text("source").notNull(),
+    status: text("status").notNull(),
+    baseSeq: integer("base_seq"),
+    approvedSeq: integer("approved_seq"),
+    requestedBy: text("requested_by").notNull(),
+    reason: text("reason").notNull(),
+    decidedBy: text("decided_by"),
+    decisionReason: text("decision_reason"),
+    createdAt: ts("created_at").notNull(),
+    decidedAt: ts("decided_at"),
+  },
+  (t) => [
+    uniqueIndex("refund_threshold_approved_seq_uq").on(t.approvedSeq).where(sql`${t.approvedSeq} is not null`),
+    check("refund_threshold_status", sql`${t.status} in ('REQUESTED','APPROVED','REJECTED')`),
+    check("refund_threshold_source", sql`${t.source} in ('SEED','ADMIN')`),
+    check("refund_threshold_bounds", sql`${t.requiresTier2AboveRial} >= 0 and ${t.requiresTier2AboveRial} % 10 = 0 and ${t.requiresTier2AboveRial} <= 1000000000000`),
+    check("refund_threshold_auto_approval", sql`${t.autoApprovalAllowed} = false`),
+    check("refund_threshold_reason", sql`char_length(btrim(${t.reason})) >= 10`),
+    check(
+      "refund_threshold_decision",
+      sql`(${t.status} = 'REQUESTED' and ${t.decidedBy} is null and ${t.decidedAt} is null and ${t.approvedSeq} is null)
+        or (${t.status} = 'APPROVED' and ${t.decidedBy} is not null and ${t.decidedAt} is not null and ${t.approvedSeq} is not null and ${t.decidedBy} <> ${t.requestedBy} and char_length(btrim(coalesce(${t.decisionReason}, ''))) >= 5)
+        or (${t.status} = 'REJECTED' and ${t.decidedBy} is not null and ${t.decidedAt} is not null and ${t.approvedSeq} is null and ${t.decidedBy} <> ${t.requestedBy} and char_length(btrim(coalesce(${t.decisionReason}, ''))) >= 5)`,
+    ),
+    index("refund_threshold_open_idx").on(t.createdAt).where(sql`${t.status} = 'REQUESTED'`),
   ],
 );

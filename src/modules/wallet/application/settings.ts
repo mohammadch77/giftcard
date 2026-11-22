@@ -118,3 +118,81 @@ export async function tehranDayWindow(db: Database | Tx, now: Date): Promise<{ s
     extract(epoch from date_trunc('day', ${at}::timestamptz, ${TOPUP_DAILY_TIMEZONE}) + interval '24 hours')::bigint as e`)).rows[0] as { s: string | number; e: string | number };
   return { start: new Date(Number(r.s) * 1000), end: new Date(Number(r.e) * 1000) };
 }
+
+// ------------------------------------------------------------------ adjustment thresholds (B10)
+
+export const WALLET_ADJUSTMENT_THRESHOLD_BOUNDS = { minFloorRial: 0, maxCeilingRial: 1_000_000_000_000 } as const;
+
+const adjustmentThresholdsSchema = z.strictObject({
+  requiresTier2AboveRial: z.number().int().min(WALLET_ADJUSTMENT_THRESHOLD_BOUNDS.minFloorRial).max(WALLET_ADJUSTMENT_THRESHOLD_BOUNDS.maxCeilingRial).multipleOf(10),
+  autoApprovalAllowed: z.literal(false).default(false),
+});
+export type AdjustmentThresholdValues = z.infer<typeof adjustmentThresholdsSchema>;
+export type AdjustmentThresholds = SettingVersion<AdjustmentThresholdValues>;
+
+interface ThresholdRow { id: string; requires_tier2_above_rial: string | number; auto_approval_allowed: boolean; source: "SEED" | "ADMIN"; approved_seq: number }
+const thresholdsNotConfigured = (): DomainError => new DomainError("WALLET_ADJUSTMENT_THRESHOLDS_NOT_CONFIGURED", "wallet adjustment thresholds are not configured (setting B10)");
+
+/** The ACTIVE adjustment thresholds. Pass a transaction to read them consistently with adjustment requests. */
+export async function getAdjustmentThresholds(db: Database | Tx): Promise<AdjustmentThresholds> {
+  const r = (await db.execute(sql`select id, requires_tier2_above_rial, auto_approval_allowed, source, approved_seq from wallet_adjustment_threshold_versions where status = 'APPROVED' order by approved_seq desc limit 1`)).rows[0] as ThresholdRow | undefined;
+  if (!r) throw thresholdsNotConfigured();
+  const parsed = adjustmentThresholdsSchema.safeParse({ requiresTier2AboveRial: Number(r.requires_tier2_above_rial), autoApprovalAllowed: r.auto_approval_allowed });
+  if (!parsed.success) throw thresholdsNotConfigured();
+  return { version: r.approved_seq, values: parsed.data, source: r.source };
+}
+
+export async function getAdjustmentThresholdsAdmin(c: Pick<WalletSettingsAdmin, "db" | "authorize">): Promise<AdjustmentThresholds> {
+  await c.authorize("wallet.settings.thresholds.read");
+  return getAdjustmentThresholds(c.db);
+}
+
+const ADJ_LOCK = sql`select pg_advisory_xact_lock(hashtextextended('wallet_adjustment_threshold_versions', 0))`;
+
+/** Request new adjustment thresholds (does NOT change anything until a DIFFERENT administrator approves). */
+export async function requestAdjustmentThresholdChange(c: WalletSettingsAdmin, input: { requiresTier2AboveRial: number; reason: string }): Promise<{ requestId: string; baseVersion: number }> {
+  await c.authorize("wallet.settings.thresholds.request");
+  const values = parseSetting(adjustmentThresholdsSchema, { requiresTier2AboveRial: input.requiresTier2AboveRial, autoApprovalAllowed: false });
+  const reason = requireReason(input.reason);
+  return withTransaction(c.db, async (tx) => {
+    await tx.execute(ADJ_LOCK);
+    const cur = await getAdjustmentThresholds(tx);
+    if (cur.values.requiresTier2AboveRial === values.requiresTier2AboveRial) throw new DomainError("SETTINGS_INVALID", "the requested threshold equals the active threshold");
+    const id = uuidv7(c.clock);
+    await tx.execute(sql`insert into wallet_adjustment_threshold_versions (id, requires_tier2_above_rial, auto_approval_allowed, source, status, base_seq, requested_by, reason, created_at)
+      values (${id}, ${values.requiresTier2AboveRial}, false, 'ADMIN', 'REQUESTED', ${cur.version}, ${c.actor.id}, ${reason}, ${c.clock.now().toISOString()}::timestamptz)`);
+    await recordAudit(tx, {
+      actor: c.actor, action: "wallet.settings.thresholds_requested", entity: { type: "wallet_adjustment_threshold_version", id },
+      before: { version: cur.version, ...cur.values }, after: { ...values }, metadata: { reason, baseVersion: cur.version }, occurredAt: c.clock.now(),
+    });
+    return { requestId: id, baseVersion: cur.version };
+  });
+}
+
+/** Approve (activates a new version) or reject a request. The decider must be a different administrator than the requester. */
+export async function decideAdjustmentThresholdChange(c: WalletSettingsAdmin, requestId: string, decision: { approve: boolean; reason: string }): Promise<{ status: "APPROVED" | "REJECTED"; version?: number }> {
+  await c.authorize("wallet.settings.thresholds.approve");
+  const reason = requireReason(decision.reason);
+  return withTransaction(c.db, async (tx) => {
+    await tx.execute(ADJ_LOCK);
+    const r = (await tx.execute(sql`select id, requires_tier2_above_rial, auto_approval_allowed, status, base_seq, requested_by from wallet_adjustment_threshold_versions where id = ${requestId} for update`)).rows[0] as
+      | { id: string; requires_tier2_above_rial: string | number; auto_approval_allowed: boolean; status: string; base_seq: number | null; requested_by: string }
+      | undefined;
+    if (!r) throw new DomainError("WALLET_NOT_FOUND", "threshold request not found");
+    if (r.status !== "REQUESTED") throw new DomainError("SETTINGS_INVALID", "this threshold request was already decided");
+    if (r.requested_by === c.actor.id) throw new DomainError("SETTINGS_INVALID", "a second administrator must decide this request (two-person rule)");
+    const cur = await getAdjustmentThresholds(tx);
+    const at = c.clock.now().toISOString();
+    const next = { requiresTier2AboveRial: Number(r.requires_tier2_above_rial), autoApprovalAllowed: false };
+    if (!decision.approve) {
+      await tx.execute(sql`update wallet_adjustment_threshold_versions set status = 'REJECTED', decided_by = ${c.actor.id}, decision_reason = ${reason}, decided_at = ${at}::timestamptz where id = ${requestId}`);
+      await recordAudit(tx, { actor: c.actor, action: "wallet.settings.thresholds_rejected", entity: { type: "wallet_adjustment_threshold_version", id: requestId }, before: { version: cur.version, ...cur.values }, after: next, metadata: { reason }, occurredAt: c.clock.now() });
+      return { status: "REJECTED" as const };
+    }
+    if (r.base_seq !== cur.version) throw new DomainError("SETTINGS_STALE", "the active threshold changed since this request was made; request again");
+    const version = cur.version + 1;
+    await tx.execute(sql`update wallet_adjustment_threshold_versions set status = 'APPROVED', approved_seq = ${version}, decided_by = ${c.actor.id}, decision_reason = ${reason}, decided_at = ${at}::timestamptz where id = ${requestId}`);
+    await recordAudit(tx, { actor: c.actor, action: "wallet.settings.thresholds_approved", entity: { type: "wallet_adjustment_threshold_version", id: requestId }, before: { version: cur.version, ...cur.values }, after: { version, ...next }, metadata: { reason }, occurredAt: c.clock.now() });
+    return { status: "APPROVED" as const, version };
+  });
+}

@@ -13,7 +13,7 @@ import { uuidv7 } from "@/platform/ids";
 import { rial, rialPrice } from "@/platform/money";
 import type { PaymentGateway } from "@/platform/payment-gateway";
 import { setTransitionContext } from "@/platform/transitions";
-import { dailyTopUpTotal, getTopUpLimits } from "./settings";
+import { dailyTopUpTotal, getAdjustmentThresholds, getTopUpLimits } from "./settings";
 
 const SYSTEM: AuditActor = { type: "SYSTEM", id: "system:wallet" };
 const iso = (d: Date) => d.toISOString();
@@ -136,10 +136,12 @@ export async function requestAdjustment(c: WalletAdminContext, i: { userId: stri
   if (amount <= 0) throw new DomainError("WALLET_INVALID", "amount must be positive");
   if (i.reason.trim().length < 10) throw new DomainError("WALLET_INVALID", "a reason of at least 10 characters is required");
   return withTransaction(c.db, async (tx) => {
+    const thresholds = await getAdjustmentThresholds(tx);
+    const tier = amount > thresholds.values.requiresTier2AboveRial ? "TIER_2" : "TIER_1";
     const id = uuidv7(c.clock);
     await setTransitionContext(tx, { actorId: c.actor.id, reason: "adjustment requested" });
-    await tx.execute(sql`insert into wallet_adjustments (id, user_ref, direction, amount, reason, status, requested_by, created_at) values (${id}, ${i.userId}, ${i.direction}, ${amount}, ${i.reason.trim()}, 'REQUESTED', ${c.actor.id}, ${iso(c.clock.now())}::timestamptz)`);
-    await recordAudit(tx, { actor: c.actor, action: "wallet.adjustment.requested", entity: { type: "wallet_adjustment", id }, metadata: { direction: i.direction, amount, reason: i.reason.trim() }, occurredAt: c.clock.now() });
+    await tx.execute(sql`insert into wallet_adjustments (id, user_ref, direction, amount, reason, status, threshold_version, tier, requested_by, created_at) values (${id}, ${i.userId}, ${i.direction}, ${amount}, ${i.reason.trim()}, 'REQUESTED', ${thresholds.version}, ${tier}, ${c.actor.id}, ${iso(c.clock.now())}::timestamptz)`);
+    await recordAudit(tx, { actor: c.actor, action: "wallet.adjustment.requested", entity: { type: "wallet_adjustment", id }, metadata: { direction: i.direction, amount, reason: i.reason.trim(), thresholdVersion: thresholds.version, tier }, occurredAt: c.clock.now() });
     return { adjustmentId: id };
   });
 }
@@ -149,12 +151,15 @@ export async function decideAdjustment(c: WalletAdminContext, adjustmentId: stri
   await c.authorize("wallet.adjust.approve");
   if (decision.reason.trim().length < 5) throw new DomainError("WALLET_INVALID", "a decision reason is required");
   return withTransaction(c.db, async (tx) => {
-    const a = first<{ user_ref: string; direction: "CREDIT" | "DEBIT"; amount: string; reason: string; status: string; requested_by: string }>(
-      await tx.execute(sql`select user_ref, direction, amount, reason, status, requested_by from wallet_adjustments where id = ${adjustmentId} for update`),
+    const a = first<{ user_ref: string; direction: "CREDIT" | "DEBIT"; amount: string; reason: string; status: string; requested_by: string; threshold_version: number; tier: "TIER_1" | "TIER_2" }>(
+      await tx.execute(sql`select user_ref, direction, amount, reason, status, requested_by, threshold_version, tier from wallet_adjustments where id = ${adjustmentId} for update`),
     );
     if (!a) throw new DomainError("WALLET_NOT_FOUND", "adjustment not found");
     if (a.status !== "REQUESTED") throw new DomainError("WALLET_INVALID", "adjustment was already decided");
     if (a.requested_by === c.actor.id) throw new DomainError("WALLET_INVALID", "a second administrator must decide this adjustment");
+    if (a.tier === "TIER_2") {
+      await c.authorize("wallet.adjust.approve_tier2");
+    }
     const now = iso(c.clock.now());
     await setTransitionContext(tx, { actorId: c.actor.id, reason: decision.reason.trim() });
     if (!decision.approve) {

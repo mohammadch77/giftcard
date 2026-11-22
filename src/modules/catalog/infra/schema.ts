@@ -293,3 +293,32 @@ export const variantStatusHistory = pgTable("variant_status_history", {
   occurredAt: ts("occurred_at").notNull(),
 });
 
+/**
+ * Legal reviews for catalog scopes (B2-LEGAL). Game-account variants cannot be published or sold
+ * without recorded legal approval.
+ */
+export const catalogLegalReviews = pgTable(
+  "catalog_legal_reviews",
+  {
+    id: uuid("id").primaryKey(),
+    scope: text("scope").notNull(),
+    status: text("status").notNull(),
+    reviewedBy: text("reviewed_by"),
+    reference: text("reference").notNull(),
+    notes: text("notes"),
+    createdAt: ts("created_at").notNull(),
+    decidedAt: ts("decided_at"),
+  },
+  (t) => [
+    check("catalog_legal_reviews_scope", sql`${t.scope} in ('GAME_ACCOUNT')`),
+    check("catalog_legal_reviews_status", sql`${t.status} in ('PENDING','APPROVED','REJECTED')`),
+    check("catalog_legal_reviews_ref", sql`char_length(btrim(${t.reference})) >= 3`),
+    check(
+      "catalog_legal_reviews_decision",
+      sql`(${t.status} = 'PENDING' and ${t.reviewedBy} is null and ${t.decidedAt} is null)
+        or (${t.status} in ('APPROVED','REJECTED') and ${t.reviewedBy} is not null and ${t.decidedAt} is not null)`,
+    ),
+    index("catalog_legal_reviews_scope_idx").on(t.scope, t.status),
+  ],
+);
+

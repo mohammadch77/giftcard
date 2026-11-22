@@ -31,7 +31,7 @@ function snapshot(): Map<string, string> {
 
 const before = snapshot();
 const originalsBefore = new Map(originals);
-execFileSync("npx", ["drizzle-kit", "generate", "--name=drift_check"], { stdio: "pipe" });
+execFileSync("npx", ["drizzle-kit", "generate", "--name=drift_check"], { stdio: "pipe", shell: process.platform === "win32" });
 const after = snapshot();
 
 const changed = [...after.keys()].filter((k) => before.get(k) !== after.get(k));
